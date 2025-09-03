@@ -31,10 +31,28 @@ export interface Section {
   iconClass: string;
 }
 
+export interface BacktestCandle {
+    id: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+}
+
+export interface BacktestTrade {
+    entryPrice: number;
+    exitPrice: number;
+    entryIndex: number;
+    exitIndex: number;
+    type: 'BUY' | 'SELL';
+}
+
 export interface BacktestResults {
     period: string;
     winRate: string;
     profitFactor: string;
     totalTrades: string;
     maxDrawdown: string;
+    candles?: BacktestCandle[];
+    trades?: BacktestTrade[];
 }

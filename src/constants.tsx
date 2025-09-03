@@ -3,25 +3,10 @@ import { SignalDirection } from './types';
 import type { Signal, TradingRule, TechStackItem, Section } from './types';
 
 export const sections: Section[] = [
-    { id: 'overview', title: 'Overview', iconClass: 'fa-solid fa-book-open' },
-    { id: 'broker-integration', title: 'Broker Integration', iconClass: 'fa-solid fa-link' },
-    { id: 'live-signals', title: 'Live Signals', iconClass: 'fa-solid fa-tower-broadcast' },
-    { id: 'functional-requirements', title: 'Functional Requirements', iconClass: 'fa-solid fa-list-check' },
-    { id: 'data-sources', title: 'Data Sources', iconClass: 'fa-solid fa-database' },
-    { id: 'trading-logic', title: 'Trading Logic & Rules', iconClass: 'fa-solid fa-gears' },
-    { id: 'rule-customizer', title: 'Rule Customizer', iconClass: 'fa-solid fa-sliders' },
-    { id: 'ml-integration', title: 'ML Smart Signals', iconClass: 'fa-solid fa-brain' },
-    { id: 'predictive-ml', title: 'Predictive ML Forecasts', iconClass: 'fa-solid fa-wand-magic-sparkles' },
-    { id: 'backtesting', title: 'Backtesting', iconClass: 'fa-solid fa-backward-fast' },
-    { id: 'signal-structure', title: 'Signal Notification', iconClass: 'fa-solid fa-message' },
-    { id: 'ui-design', title: 'UI Design', iconClass: 'fa-solid fa-palette' },
-    { id: 'tech-stack', title: 'Technology Stack', iconClass: 'fa-solid fa-microchip' },
-    { id: 'api-specification', title: 'API Specification', iconClass: 'fa-solid fa-code-branch' },
-    { id: 'backend-implementation', title: 'Backend Implementation', iconClass: 'fa-solid fa-cogs' },
-    { id: 'deployment-guide', title: 'Deployment Guide', iconClass: 'fa-brands fa-docker' },
-    { id: 'sentiment-analysis', title: 'Market Sentiment', iconClass: 'fa-solid fa-magnifying-glass-chart' },
-    { id: 'feedback-mechanism', title: 'Post-Market Feedback', iconClass: 'fa-solid fa-book' },
-    { id: 'recommendations', title: 'Recommendations', iconClass: 'fa-solid fa-rocket' },
+    { id: 'trading-terminal', title: 'Trading Terminal', iconClass: 'fa-solid fa-desktop' },
+    { id: 'backtesting', title: 'Backtesting Engine', iconClass: 'fa-solid fa-backward-fast' },
+    { id: 'ml-intelligence', title: 'ML Intelligence', iconClass: 'fa-solid fa-brain' },
+    { id: 'system-architecture', title: 'System Architecture', iconClass: 'fa-solid fa-sitemap' },
 ];
 
 export const tradingRules: TradingRule[] = [

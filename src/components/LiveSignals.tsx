@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { Signal } from '../types';
 import { SignalDirection } from '../types';
 import SignalCard from './SignalCard';
-import { startWebSocketConnection, stopWebSocketConnection } from '../services/api';
+// FIX: Corrected import names for WebSocket connection functions to match exports from api.ts.
+import { startLiveSignalStream, stopLiveSignalStream } from '../services/api';
 import { useBroker } from '../contexts/BrokerContext';
 
 interface ChartSignal extends Signal {
@@ -125,11 +126,14 @@ const LiveSignals: React.FC = () => {
 
   useEffect(() => {
     if (isReceiving) {
-      startWebSocketConnection({ onSignal: handleNewSignal, onTick: handleNewTick });
+      // FIX: Corrected function name to match import.
+      startLiveSignalStream({ onSignal: handleNewSignal, onTick: handleNewTick });
     } else {
-      stopWebSocketConnection();
+      // FIX: Corrected function name to match import.
+      stopLiveSignalStream();
     }
-    return () => stopWebSocketConnection();
+    // FIX: Corrected function name to match import.
+    return () => stopLiveSignalStream();
   }, [isReceiving, handleNewSignal, handleNewTick]);
   
   const toggleReceiver = () => {

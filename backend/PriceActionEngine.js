@@ -5,6 +5,10 @@
  */
 const { KiteConnect } = require("kiteconnect");
 const { KiteTicker } = require("kiteconnect");
+const fs = require('fs');
+const path = require('path');
+const signalsLogPath = path.join(__dirname, 'data', 'signals.log');
+
 
 const ruleWeights = {
     "Breakout & Retest": 15,
@@ -37,6 +41,12 @@ class PriceActionEngine {
 
     this.previousDayHigh = 0;
     this.previousDayLow = 0;
+
+    // Ensure data directory exists
+    const dataDir = path.join(__dirname, 'data');
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
   }
 
   async connectToBroker(apiKey, accessToken) {
@@ -221,6 +231,15 @@ class PriceActionEngine {
       console.error('Error saving signal to database:', error);
     }
   }
+
+  _logSignalToFile(signal) {
+    const logEntry = JSON.stringify(signal) + '\n';
+    fs.appendFile(signalsLogPath, logEntry, (err) => {
+        if (err) {
+            console.error('Error logging signal to file:', err);
+        }
+    });
+  }
   
   _broadcast(message) {
     if (!this.wss || this.wss.clients.size === 0) {
@@ -235,7 +254,8 @@ class PriceActionEngine {
   }
 
   async _broadcastSignal(signal) {
-    await this._saveSignalToDb(signal); 
+    await this._saveSignalToDb(signal);
+    this._logSignalToFile(signal);
     this._broadcast({ type: 'new_signal', payload: signal });
     console.log("Signal broadcasted to connected clients.");
   }

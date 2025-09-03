@@ -20,7 +20,7 @@ interface WebSocketCallbacks {
  * Connects to the backend WebSocket server to receive live data.
  * @param callbacks An object containing callbacks for different event types.
  */
-export const startWebSocketConnection = (callbacks: WebSocketCallbacks) => {
+export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
     if (webSocket && webSocket.readyState === WebSocket.OPEN) {
         console.log('WebSocket connection already open.');
         return;
@@ -59,7 +59,7 @@ export const startWebSocketConnection = (callbacks: WebSocketCallbacks) => {
 /**
  * Disconnects from the WebSocket server.
  */
-export const stopWebSocketConnection = () => {
+export const stopLiveSignalStream = () => {
     if (webSocket) {
         webSocket.close();
         webSocket = null;

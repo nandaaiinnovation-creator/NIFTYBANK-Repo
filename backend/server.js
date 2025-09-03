@@ -92,20 +92,58 @@ app.post('/api/broker/connect', async (req, res) => {
   }
 });
 
+// --- MOCK DATA GENERATORS FOR BACKTEST ---
+const generateMockCandles = (numCandles, startPrice) => {
+    let price = startPrice;
+    const candles = [];
+    for (let i = 0; i < numCandles; i++) {
+        const open = price;
+        const change = (Math.random() - 0.48) * 100;
+        const close = price + change;
+        const high = Math.max(open, close) + Math.random() * 20;
+        const low = Math.min(open, close) - Math.random() * 20;
+        candles.push({ id: i, open, high, low, close });
+        price = close;
+    }
+    return candles;
+};
+
+const generateMockTrades = (numTrades, numCandles, candles) => {
+    const trades = [];
+    if (numCandles < 10) return [];
+    for (let i = 0; i < numTrades; i++) {
+        const type = Math.random() > 0.5 ? 'BUY' : 'SELL';
+        const entryIndex = Math.floor(Math.random() * (numCandles - 5));
+        const exitIndex = entryIndex + Math.floor(Math.random() * 4) + 1;
+        trades.push({
+            type,
+            entryIndex,
+            exitIndex,
+            entryPrice: candles[entryIndex].close,
+            exitPrice: candles[exitIndex].close,
+        });
+    }
+    return trades;
+};
+
+
 app.post('/api/backtest', (req, res) => {
     const { period } = req.body;
     console.log(`Running backtest for period: ${period}`);
-    let mockResults;
+    
     // Mock results based on the period
     const resultsMap = {
-      '1m': { period: "1 Month", winRate: "75.1%", profitFactor: "2.8", totalTrades: "25", maxDrawdown: "3.1%" },
-      '3m': { period: "3 Months", winRate: "73.2%", profitFactor: "2.5", totalTrades: "71", maxDrawdown: "5.4%" },
-      '6m': { period: "6 Months", winRate: "72.0%", profitFactor: "2.4", totalTrades: "135", maxDrawdown: "7.8%" },
-      '1y': { period: "1 Year", winRate: "71.2%", profitFactor: "2.3", totalTrades: "151", maxDrawdown: "9.8%" },
-      '3y': { period: "3 Years", winRate: "68.5%", profitFactor: "2.1", totalTrades: "452", maxDrawdown: "12.3%" },
-      '5y': { period: "5 Years", winRate: "67.9%", profitFactor: "1.9", totalTrades: "743", maxDrawdown: "14.1%" }
+      '1': { period: "1 Year", winRate: "71.2%", profitFactor: "2.3", totalTrades: "151", maxDrawdown: "9.8%" },
+      '3': { period: "3 Years", winRate: "68.5%", profitFactor: "2.1", totalTrades: "452", maxDrawdown: "12.3%" },
+      '5': { period: "5 Years", winRate: "67.9%", profitFactor: "1.9", totalTrades: "743", maxDrawdown: "14.1%" }
     };
-    mockResults = resultsMap[period] || resultsMap['1y']; // Default to 1 year if not found
+    
+    const stats = resultsMap[period] || resultsMap['3'];
+    const numCandles = 100;
+    const candles = generateMockCandles(numCandles, 54000);
+    const trades = generateMockTrades(8, numCandles, candles);
+
+    const mockResults = { ...stats, candles, trades };
     
     setTimeout(() => res.status(200).json(mockResults), 1500); // Simulate delay
 });
