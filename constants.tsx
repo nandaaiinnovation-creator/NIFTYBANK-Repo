@@ -21,7 +21,6 @@ export const sections: Section[] = [
     { id: 'deployment-guide', title: 'Deployment Guide', iconClass: 'fa-brands fa-docker' },
     { id: 'sentiment-analysis', title: 'Market Sentiment', iconClass: 'fa-solid fa-magnifying-glass-chart' },
     { id: 'feedback-mechanism', title: 'Post-Market Feedback', iconClass: 'fa-solid fa-book' },
-    { id: 'how-to-run', title: 'How to Run', iconClass: 'fa-solid fa-terminal' },
     { id: 'recommendations', title: 'Recommendations', iconClass: 'fa-solid fa-rocket' },
 ];
 
@@ -42,7 +41,6 @@ export const tradingRules: TradingRule[] = [
 ];
 
 const ReactIcon = <i className="fab fa-react text-cyan-400 text-2xl"></i>;
-const TSIcon = <svg className="w-6 h-6" viewBox="0 0 128 128"><path fill="#3178c6" d="M0 0h128v128H0z"></path><path fill="#fff" d="M30.34 89.13h15.28V43.83h23.23v-11.5H30.34v56.8zM100.08 89.13h11.52V64.67h.33c1.78 3.82 5.25 9.15 12.08 12.07l5.63-10.2c-4.99-2.22-8.39-5.45-10.13-8.62h.33V43.83H100.08v45.3z"></path></svg>;
 const TailwindIcon = <i className="fas fa-wind text-teal-400 text-2xl"></i>;
 const NodeIcon = <i className="fab fa-node-js text-green-500 text-2xl"></i>;
 const WebSocketIcon = <i className="fas fa-network-wired text-blue-400 text-2xl"></i>;

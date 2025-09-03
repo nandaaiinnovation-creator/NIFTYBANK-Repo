@@ -11,7 +11,6 @@ import RuleCustomizer from './components/RuleCustomizer';
 import MLIntegration from './components/MLIntegration';
 import PredictiveML from './components/PredictiveML';
 import Backtesting from './components/Backtesting';
-import HowToRun from './components/HowToRun';
 import ApiSpecification from './components/ApiSpecification';
 import BrokerIntegration from './components/BrokerIntegration';
 import BackendImplementation from './components/BackendImplementation';
@@ -164,8 +163,6 @@ const App: React.FC = () => {
             </p>
           </SectionCard>
         );
-      case 'how-to-run':
-        return <HowToRun />;
       case 'recommendations':
         return (
           <SectionCard title={activeSectionData.title} iconClass={activeSectionData.iconClass}>
