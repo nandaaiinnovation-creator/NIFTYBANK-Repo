@@ -121,10 +121,6 @@ const LiveSignals: React.FC = () => {
 
   return (
     <div className="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700">
-      {/* For fade-in animation on signal markers. Add to your global CSS:
-          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-          .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
-      */}
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
         <div className="flex items-center">
             <i className="fa-solid fa-tower-broadcast text-xl text-cyan-400 mr-3"></i>

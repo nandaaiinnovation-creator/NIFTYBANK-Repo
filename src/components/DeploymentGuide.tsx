@@ -86,8 +86,8 @@ const dockerfileFrontend = `
 FROM node:18-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-COPY . .
 RUN npm install
+COPY . .
 RUN npm run build
 
 # Stage 2: Serve the app with Nginx
@@ -117,6 +117,7 @@ const DeploymentGuide: React.FC = () => {
                 <div>
                     <h3 className="text-lg font-semibold text-white mb-3"><i className="fa-solid fa-box-open mr-3 text-cyan-400"></i>Frontend Dockerfile</h3>
                     <p className="text-gray-400 mb-4">Create a file named <code className="text-xs bg-gray-700 px-1 rounded">Dockerfile.frontend</code> in the root project directory. This builds the React app and serves it with Nginx.</p>
+                    {/* FIX: Optimized the Dockerfile steps for better layer caching. Swapped `COPY . .` and `RUN npm install`. */}
                     <CodeBlock>{dockerfileFrontend}</CodeBlock>
                 </div>
 
