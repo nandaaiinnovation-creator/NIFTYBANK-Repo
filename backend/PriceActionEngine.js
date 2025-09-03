@@ -62,7 +62,6 @@ class PriceActionEngine {
     console.log("Fetching pre-market data (e.g., Previous Day H/L/C)...");
     // --- REAL IMPLEMENTATION ---
     try {
-      // Zerodha requires instrument token, interval, from and to dates
       const to = new Date();
       const from = new Date();
       from.setDate(to.getDate() - 7); // Look back 7 days to ensure we get the last trading day
@@ -82,8 +81,6 @@ class PriceActionEngine {
       console.log(`Pre-market data loaded: PDH=${this.previousDayHigh}, PDL=${this.previousDayLow}`);
     } catch (error) {
       console.error("Failed to fetch pre-market data:", error);
-      // It's critical to handle this, as rules might depend on it.
-      // We could either stop or proceed with default/zero values.
       throw new Error("Could not fetch essential pre-market data.");
     }
   }
@@ -101,15 +98,12 @@ class PriceActionEngine {
       console.log("Kite Ticker connected. Subscribing to instruments...");
       const tokens = Object.values(this.instrumentTokens);
       this.ticker.subscribe(tokens);
-      // Set mode to 'full' to get detailed tick data including OHLC
       this.ticker.setMode(this.ticker.modeFull, tokens);
     });
 
     this.ticker.on("ticks", (ticks) => {
-      // Process incoming ticks
       ticks.forEach(tick => {
         this._updateCandles(tick);
-        // Only run the main engine logic for the BANKNIFTY index
         if (tick.instrument_token === this.instrumentTokens['BANKNIFTY']) {
           this._processMarketTick(tick);
         }
@@ -127,8 +121,6 @@ class PriceActionEngine {
     const price = tick.last_price;
 
     if (!this.candles[token] || this.candles[token].minute !== minute) {
-      // New candle begins. The previous candle is now complete.
-      // Here you could trigger rules that evaluate on candle close.
       if (this.candles[token]) {
         console.log(`1-min candle closed for ${token}: O:${this.candles[token].open}, H:${this.candles[token].high}, L:${this.candles[token].low}, C:${this.candles[token].close}`);
       }
@@ -142,7 +134,6 @@ class PriceActionEngine {
         timestamp: tick.timestamp
       };
     } else {
-      // Update existing candle
       this.candles[token].high = Math.max(this.candles[token].high, price);
       this.candles[token].low = Math.min(this.candles[token].low, price);
       this.candles[token].close = price;
@@ -165,8 +156,7 @@ class PriceActionEngine {
   
   _evaluateRules(price) {
     const passed = [];
-    const failed = []; // Track failed rules for more detailed signals
-    // Signal cooldown: Don't generate a new signal if it's too close to the last one.
+    const failed = [];
     if (Math.abs(price - this.lastSignalPrice) < 50) return null; 
 
     // Rule: Breakout & Retest of Resistance
@@ -174,23 +164,30 @@ class PriceActionEngine {
       passed.push("Breakout & Retest");
     }
     // Rule: Breakout & Retest of Support
-    if (price < this.supportLevel && this.previousPrice >= this.supportLevel) {
+    else if (price < this.supportLevel && this.previousPrice >= this.supportLevel) {
       passed.push("Breakout & Retest");
+    } else {
+      failed.push("Breakout & Retest");
     }
+    
     // Rule: Reaction to Previous Day High/Low
     if (Math.abs(price - this.previousDayHigh) < 20 || Math.abs(price - this.previousDayLow) < 20) {
       passed.push("Previous Day Levels");
+    } else {
+      failed.push("Previous Day Levels");
     }
     
-    // Add more advanced rule evaluations here using this.candles data
+    if (passed.length < 1) return null;
     
-    if (passed.length < 1) return null; // Only generate signal if at least one rule passes
+    const direction = (price > this.resistanceLevel && price > this.previousDayHigh) ? 'BUY' : 
+                      (price < this.supportLevel && price < this.previousDayLow) ? 'SELL' :
+                      (passed.includes("Breakout & Retest") ? (price > this.resistanceLevel ? 'BUY' : 'SELL') : null);
+
+    if (!direction) return null; // No clear directional bias
     
-    const direction = price > this.resistanceLevel ? 'BUY' : 'SELL';
-    
-    let convictionScore = 50; // Base score
+    let convictionScore = 50;
     passed.forEach(rule => { convictionScore += ruleWeights[rule] || 5; });
-    convictionScore = Math.min(98, Math.floor(convictionScore)); // Cap conviction at 98%
+    convictionScore = Math.min(98, Math.floor(convictionScore));
 
     return {
       time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
@@ -205,10 +202,10 @@ class PriceActionEngine {
   
   async _saveSignalToDb(signal) {
     const query = `
-        INSERT INTO signals (symbol, price, direction, rules_passed, conviction)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO signals (symbol, price, direction, rules_passed, rules_failed, conviction)
+        VALUES ($1, $2, $3, $4, $5, $6)
     `;
-    const values = [signal.symbol, signal.price, signal.direction, signal.rulesPassed, signal.conviction];
+    const values = [signal.symbol, signal.price, signal.direction, signal.rulesPassed, signal.rulesFailed, signal.conviction];
     try {
       await this.db.query(query, values);
       console.log('Signal saved to database.');
@@ -218,7 +215,6 @@ class PriceActionEngine {
   }
 
   async _broadcastSignal(signal) {
-    // IMPORTANT: First, save the signal to the database to ensure persistence.
     await this._saveSignalToDb(signal); 
     
     if (!this.wss || this.wss.clients.size === 0) {
@@ -228,7 +224,6 @@ class PriceActionEngine {
     
     const message = JSON.stringify({ type: 'new_signal', payload: signal });
     this.wss.clients.forEach((client) => {
-      // Check if client is ready before sending
       if (client.readyState === 1) { // WebSocket.OPEN === 1
           client.send(message);
       }

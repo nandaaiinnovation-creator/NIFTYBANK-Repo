@@ -1,3 +1,4 @@
+require('dotenv').config(); // Load environment variables from .env file
 const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
@@ -6,9 +7,9 @@ const { Pool } = require('pg'); // Database client
 const PriceActionEngine = require('./PriceActionEngine');
 
 // --- DATABASE SETUP ---
-// IMPORTANT: In production, use environment variables for connection details
+// Connection string is now loaded from environment variables
 const db = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/trading_signals',
+  connectionString: process.env.DATABASE_URL,
 });
 
 // Function to create necessary tables if they don't exist
@@ -22,6 +23,7 @@ const initializeDatabase = async () => {
         price NUMERIC(10, 2) NOT NULL,
         direction VARCHAR(10) NOT NULL,
         rules_passed TEXT[],
+        rules_failed TEXT[],
         conviction INTEGER NOT NULL
       );
     `);
@@ -39,7 +41,6 @@ const initializeDatabase = async () => {
     console.log('Table "user_rule_configurations" is ready.');
   } catch (err) {
     console.error('Error initializing database tables:', err);
-    // Exit process if DB setup fails, as the app cannot run without it
     process.exit(1);
   }
 };
@@ -49,10 +50,12 @@ console.log('Attempting to connect to the database...');
 db.connect()
   .then(() => {
     console.log('Database connected successfully.');
-    // Initialize tables after a successful connection
     initializeDatabase();
   })
-  .catch(err => console.error('Database connection error:', err.stack));
+  .catch(err => {
+    console.error('Database connection error. Ensure the database is running and the DATABASE_URL is correct in your .env file.', err.stack)
+    process.exit(1);
+  });
 
 // --- SERVER SETUP ---
 const app = express();
@@ -63,7 +66,6 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 8080;
 
-// Initialize the trading engine and pass it the DB and WebSocket server instances
 console.log("Initializing Price Action Engine...");
 const engine = new PriceActionEngine(wss, db);
 
@@ -82,7 +84,6 @@ app.post('/api/broker/connect', async (req, res) => {
   }
   
   try {
-    // Pass credentials to the engine to establish a live data connection
     await engine.connectToBroker(apiKey, accessToken);
     res.status(200).json({ status: 'success', message: 'Successfully connected to broker.' });
   } catch (error) {
@@ -94,7 +95,6 @@ app.post('/api/broker/connect', async (req, res) => {
 app.post('/api/backtest', (req, res) => {
     const { period } = req.body;
     console.log(`Running backtest for period: ${period} years`);
-    // In a real app, you would run a complex simulation here.
     let mockResults;
     switch (period) {
         case '1':
@@ -113,8 +113,7 @@ app.post('/api/backtest', (req, res) => {
 
 app.post('/api/rules', async (req, res) => {
   const rulesConfig = req.body;
-  // Hardcoding user_id since we don't have authentication
-  const userId = 1; 
+  const userId = 1; // Hardcoded user_id
 
   console.log('Saving custom rule configuration for user:', userId);
   

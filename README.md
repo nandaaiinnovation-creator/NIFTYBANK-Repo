@@ -35,14 +35,14 @@ cd ..
 
 **2. Configure Environment**
 
-The backend requires a connection to a PostgreSQL database. Ensure you have a database created and set the connection string in `backend/server.js`:
+The backend requires a connection to a PostgreSQL database.
 
-```javascript
-// backend/server.js
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/trading_signals',
-});
+First, copy the example environment file to a new `.env` file:
+```bash
+# From the project root, run:
+cp backend/.env.example backend/.env
 ```
+Next, open `backend/.env` in your editor and update the `DATABASE_URL` with your actual database connection string.
 
 **3. Run The Application**
 

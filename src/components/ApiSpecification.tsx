@@ -40,8 +40,9 @@ const ApiSpecification: React.FC = () => {
     "time": "10:18 AM",
     "symbol": "BANKNIFTY",
     "price": 54000,
-    "direction": "BUY", // "BUY" or "SELL"
+    "direction": "BUY",
     "rulesPassed": ["PrevDayLevels", "SupportResistance"],
+    "rulesFailed": [],
     "conviction": 72
   }
 }`}</CodeBlock>

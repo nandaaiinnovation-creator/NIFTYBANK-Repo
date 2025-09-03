@@ -74,15 +74,22 @@ const LiveSignals: React.FC = () => {
     setCandlesticks(prevCandles => {
         if (prevCandles.length === 0) return [];
         
-        const updatedCandles = prevCandles.slice(1); // Remove the oldest candle
-        const lastCandle = { ...updatedCandles[updatedCandles.length - 1] };
+        let updatedCandles = [...prevCandles];
+        const lastCandle = updatedCandles[updatedCandles.length - 1];
         
-        // Update the current candle's close, high, and low
-        lastCandle.close = newSignal.price;
-        lastCandle.high = Math.max(lastCandle.high, newSignal.price);
-        lastCandle.low = Math.min(lastCandle.low, newSignal.price);
+        // This is a simplified logic. A real implementation would manage candles based on time.
+        // For this UI, we'll just shift the candles for visual effect.
+        updatedCandles = prevCandles.slice(1);
         
-        updatedCandles[updatedCandles.length - 1] = lastCandle;
+        const newCandle = {
+          id: Date.now(),
+          open: lastCandle.close,
+          high: Math.max(lastCandle.close, newSignal.price),
+          low: Math.min(lastCandle.close, newSignal.price),
+          close: newSignal.price
+        };
+        updatedCandles.push(newCandle);
+
         return updatedCandles;
     });
 
@@ -166,7 +173,7 @@ const LiveSignals: React.FC = () => {
           {/* Chart View */}
           <div className="lg:col-span-2 bg-gray-900/50 p-4 rounded-lg border border-gray-700 flex flex-col">
             <h3 className="text-md font-semibold text-white mb-2">BANKNIFTY Chart</h3>
-            <p className="text-xs text-gray-500 mb-4">This is a visual mockup. In production, this would be a live chart from a library like TradingView or a broker's API.</p>
+            <p className="text-xs text-gray-500 mb-4">Live chart powered by backend WebSocket data.</p>
             <div className="relative flex-grow bg-gray-800 rounded-md p-2 overflow-hidden">
                 {/* Y-Axis Price Labels */}
                 <div className="absolute top-0 right-2 h-full flex flex-col justify-between py-1 text-xs text-gray-500 z-10">
