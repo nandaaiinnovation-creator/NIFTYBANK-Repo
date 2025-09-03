@@ -1,0 +1,17 @@
+# Stage 1: Install dependencies
+FROM node:18-alpine AS deps
+WORKDIR /app
+COPY backend/package*.json ./
+RUN npm install
+
+# Stage 2: Build production image
+FROM node:18-alpine
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY backend .
+
+# Expose the port the app runs on
+EXPOSE 8080
+
+# Command to run the application
+CMD ["node", "server.js"]
