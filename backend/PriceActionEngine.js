@@ -88,6 +88,11 @@ class PriceActionEngine {
   _startLiveTicker() {
     console.log("Initializing live ticker...");
     // --- REAL IMPLEMENTATION ---
+    if (this.ticker) {
+        console.log("Ticker already running. Disconnecting first.");
+        this.ticker.disconnect();
+    }
+
     this.ticker = new KiteTicker({
       api_key: this.kite.api_key,
       access_token: this.kite.access_token,
@@ -122,7 +127,7 @@ class PriceActionEngine {
 
     if (!this.candles[token] || this.candles[token].minute !== minute) {
       if (this.candles[token]) {
-        console.log(`1-min candle closed for ${token}: O:${this.candles[token].open}, H:${this.candles[token].high}, L:${this.candles[token].low}, C:${this.candles[token].close}`);
+        // Optional: log candle close
       }
 
       this.candles[token] = {
@@ -145,6 +150,9 @@ class PriceActionEngine {
     
     this.previousPrice = this.currentPrice || tick.last_price;
     this.currentPrice = tick.last_price;
+
+    // Broadcast every tick for the live chart
+    this._broadcastTick(tick);
 
     const signal = this._evaluateRules(this.currentPrice);
 
@@ -213,22 +221,31 @@ class PriceActionEngine {
       console.error('Error saving signal to database:', error);
     }
   }
+  
+  _broadcast(message) {
+    if (!this.wss || this.wss.clients.size === 0) {
+      return;
+    };
+    const stringifiedMessage = JSON.stringify(message);
+    this.wss.clients.forEach((client) => {
+      if (client.readyState === 1) { // WebSocket.OPEN === 1
+          client.send(stringifiedMessage);
+      }
+    });
+  }
 
   async _broadcastSignal(signal) {
     await this._saveSignalToDb(signal); 
-    
-    if (!this.wss || this.wss.clients.size === 0) {
-        console.log("No clients connected to WebSocket. Signal was saved but not broadcasted.");
-        return;
-    };
-    
-    const message = JSON.stringify({ type: 'new_signal', payload: signal });
-    this.wss.clients.forEach((client) => {
-      if (client.readyState === 1) { // WebSocket.OPEN === 1
-          client.send(message);
-      }
-    });
+    this._broadcast({ type: 'new_signal', payload: signal });
     console.log("Signal broadcasted to connected clients.");
+  }
+  
+  _broadcastTick(tick) {
+    const payload = {
+      price: tick.last_price,
+      time: tick.timestamp
+    };
+    this._broadcast({ type: 'market_tick', payload });
   }
 }
 

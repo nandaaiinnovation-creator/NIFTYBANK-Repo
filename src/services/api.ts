@@ -1,19 +1,26 @@
-import { SignalDirection } from '../types';
 import type { Signal, BacktestResults } from '../types';
 import type { CustomizableRule } from '../components/RuleCustomizer';
 
 const API_BASE_URL = 'http://localhost:8080/api';
 const WS_URL = 'ws://localhost:8080';
 
-// --- LIVE WEB SOCKET CONNECTION ---
-
 let webSocket: WebSocket | null = null;
 
+interface MarketTick {
+    price: number;
+    time: string;
+}
+
+interface WebSocketCallbacks {
+    onSignal: (signal: Signal) => void;
+    onTick: (tick: MarketTick) => void;
+}
+
 /**
- * Connects to the backend WebSocket server to receive live signals.
- * @param onSignal A callback function to be called with each new signal.
+ * Connects to the backend WebSocket server to receive live data.
+ * @param callbacks An object containing callbacks for different event types.
  */
-export const startLiveSignalStream = (onSignal: (signal: Signal) => void) => {
+export const startWebSocketConnection = (callbacks: WebSocketCallbacks) => {
     if (webSocket && webSocket.readyState === WebSocket.OPEN) {
         console.log('WebSocket connection already open.');
         return;
@@ -29,7 +36,9 @@ export const startLiveSignalStream = (onSignal: (signal: Signal) => void) => {
         try {
             const message = JSON.parse(event.data);
             if (message.type === 'new_signal' && message.payload) {
-                onSignal(message.payload);
+                callbacks.onSignal(message.payload);
+            } else if (message.type === 'market_tick' && message.payload) {
+                callbacks.onTick(message.payload);
             }
         } catch (error) {
             console.error('Error parsing WebSocket message:', error);
@@ -50,14 +59,12 @@ export const startLiveSignalStream = (onSignal: (signal: Signal) => void) => {
 /**
  * Disconnects from the WebSocket server.
  */
-export const stopLiveSignalStream = () => {
+export const stopWebSocketConnection = () => {
     if (webSocket) {
         webSocket.close();
         webSocket = null;
     }
 };
-
-// --- LIVE REST API CALLS ---
 
 /**
  * Calls the backtesting API endpoint.

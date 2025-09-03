@@ -1,47 +1,40 @@
 import React, { useState } from 'react';
 import SectionCard from './SectionCard';
-import { connectToBroker } from '../services/api';
-
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+import { useBroker } from '../contexts/BrokerContext';
 
 const BrokerIntegration: React.FC = () => {
-    const [apiKey, setApiKey] = useState('');
-    const [accessToken, setAccessToken] = useState('');
-    const [status, setStatus] = useState<ConnectionStatus>('disconnected');
-    const [message, setMessage] = useState('Enter your credentials to connect to the live data feed.');
+    const { 
+        status, 
+        message, 
+        apiKey, 
+        setApiKey, 
+        accessToken, 
+        setAccessToken, 
+        connect, 
+        disconnect 
+    } = useBroker();
+    
+    const [isConnecting, setIsConnecting] = useState(false);
 
-    const handleConnect = async () => {
-        if (!apiKey.trim() || !accessToken.trim()) {
-            setStatus('error');
-            setMessage('API Key and Access Token cannot be empty.');
-            return;
-        }
-
-        setStatus('connecting');
-        setMessage('Attempting to connect to Zerodha...');
+    const handleConnect = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsConnecting(true);
         try {
-            const response = await connectToBroker(apiKey, accessToken);
-            setStatus('connected');
-            setMessage(response.message);
-        } catch (error: any) {
-            setStatus('error');
-            setMessage(error.message || 'Connection failed. Please check credentials and try again.');
+            await connect();
+        } catch (error) {
+            // Error is already handled in context, but we can log it here if needed
+            console.error("Connection attempt failed from component.");
+        } finally {
+            setIsConnecting(false);
         }
     };
-
-    const handleDisconnect = () => {
-        setApiKey('');
-        setAccessToken('');
-        setStatus('disconnected');
-        setMessage('Enter your credentials to connect to the live data feed.');
-    }
 
     const getStatusIndicator = () => {
         switch (status) {
             case 'connected':
                 return <span className="text-green-400 font-bold flex items-center"><i className="fas fa-check-circle mr-2"></i>Connected</span>;
             case 'connecting':
-                return <span className="text-yellow-400 font-bold flex items-center"><i className="fas fa-spinner fa-spin mr-2"></i>Connecting...</span>;
+                 return <span className="text-yellow-400 font-bold flex items-center"><i className="fas fa-spinner fa-spin mr-2"></i>Connecting...</span>;
             case 'error':
                  return <span className="text-red-400 font-bold flex items-center"><i className="fas fa-exclamation-triangle mr-2"></i>Error</span>;
             case 'disconnected':
@@ -65,7 +58,7 @@ const BrokerIntegration: React.FC = () => {
                 <p className="text-sm text-center text-gray-500 mb-6 h-10 flex items-center justify-center">{message}</p>
 
                 {status !== 'connected' ? (
-                    <form onSubmit={(e) => { e.preventDefault(); handleConnect(); }} className="space-y-4">
+                    <form onSubmit={handleConnect} className="space-y-4">
                         <div>
                             <label htmlFor="api-key" className="block text-sm font-medium text-gray-300 mb-1">API Key</label>
                             <input
@@ -92,15 +85,15 @@ const BrokerIntegration: React.FC = () => {
                         </div>
                         <button 
                             type="submit"
-                            disabled={status === 'connecting'} 
+                            disabled={isConnecting} 
                             className="w-full mt-4 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2.5 px-4 rounded-md transition-colors flex items-center justify-center gap-2"
                         >
-                             {status === 'connecting' ? <><i className="fas fa-spinner fa-spin"></i>Connecting...</> : <><i className="fas fa-plug"></i>Connect</>}
+                             {isConnecting ? <><i className="fas fa-spinner fa-spin"></i>Connecting...</> : <><i className="fas fa-plug"></i>Connect</>}
                         </button>
                     </form>
                 ) : (
                     <button 
-                        onClick={handleDisconnect}
+                        onClick={disconnect}
                         className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-md transition-colors flex items-center justify-center gap-2"
                     >
                         <i className="fas fa-times-circle"></i>Disconnect

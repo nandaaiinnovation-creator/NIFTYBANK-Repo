@@ -6,7 +6,7 @@ import type { BacktestResults } from '../types';
 const Backtesting: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [results, setResults] = useState<BacktestResults | null>(null);
-    const [period, setPeriod] = useState<string>('3'); // Default to 3 years
+    const [period, setPeriod] = useState<string>('1y'); // Default to 1 year
 
     const handleRunBacktest = async () => {
         setIsLoading(true);
@@ -34,6 +34,8 @@ const Backtesting: React.FC = () => {
         <SectionCard title="Backtesting Engine" iconClass="fa-solid fa-backward-fast">
             <p className="text-gray-400 mb-6">
                 Validate the effectiveness of the trading logic and your custom rule configurations by running simulations on historical data. This module helps build confidence and identify potential areas for strategy improvement.
+                <br />
+                <span className="text-sm text-yellow-400 mt-2 block">Note: The current backend runs a sophisticated simulation. Real historical data integration is the next step.</span>
             </p>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -49,9 +51,21 @@ const Backtesting: React.FC = () => {
                                 value={period}
                                 onChange={(e) => setPeriod(e.target.value)}
                             >
-                                <option value="1">Past 1 Year</option>
-                                <option value="3">Past 3 Years</option>
-                                <option value="5">Past 5 Years</option>
+                                <optgroup label="Months">
+                                    <option value="1m">Past 1 Month</option>
+                                    <option value="2m">Past 2 Months</option>
+                                    <option value="3m">Past 3 Months</option>
+                                    <option value="4m">Past 4 Months</option>
+                                    <option value="5m">Past 5 Months</option>
+                                    <option value="6m">Past 6 Months</option>
+                                </optgroup>
+                                <optgroup label="Years">
+                                    <option value="1y">Past 1 Year</option>
+                                    <option value="2y">Past 2 Years</option>
+                                    <option value="3y">Past 3 Years</option>
+                                    <option value="4y">Past 4 Years</option>
+                                    <option value="5y">Past 5 Years</option>
+                                </optgroup>
                             </select>
                         </div>
                         <div>

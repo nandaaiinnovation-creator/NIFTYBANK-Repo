@@ -94,20 +94,19 @@ app.post('/api/broker/connect', async (req, res) => {
 
 app.post('/api/backtest', (req, res) => {
     const { period } = req.body;
-    console.log(`Running backtest for period: ${period} years`);
+    console.log(`Running backtest for period: ${period}`);
     let mockResults;
-    switch (period) {
-        case '1':
-            mockResults = { period: "1 Year", winRate: "71.2%", profitFactor: "2.3", totalTrades: "151", maxDrawdown: "9.8%" };
-            break;
-        case '5':
-            mockResults = { period: "5 Years", winRate: "67.9%", profitFactor: "1.9", totalTrades: "743", maxDrawdown: "14.1%" };
-            break;
-        case '3':
-        default:
-            mockResults = { period: "3 Years", winRate: "68.5%", profitFactor: "2.1", totalTrades: "452", maxDrawdown: "12.3%" };
-            break;
-    }
+    // Mock results based on the period
+    const resultsMap = {
+      '1m': { period: "1 Month", winRate: "75.1%", profitFactor: "2.8", totalTrades: "25", maxDrawdown: "3.1%" },
+      '3m': { period: "3 Months", winRate: "73.2%", profitFactor: "2.5", totalTrades: "71", maxDrawdown: "5.4%" },
+      '6m': { period: "6 Months", winRate: "72.0%", profitFactor: "2.4", totalTrades: "135", maxDrawdown: "7.8%" },
+      '1y': { period: "1 Year", winRate: "71.2%", profitFactor: "2.3", totalTrades: "151", maxDrawdown: "9.8%" },
+      '3y': { period: "3 Years", winRate: "68.5%", profitFactor: "2.1", totalTrades: "452", maxDrawdown: "12.3%" },
+      '5y': { period: "5 Years", winRate: "67.9%", profitFactor: "1.9", totalTrades: "743", maxDrawdown: "14.1%" }
+    };
+    mockResults = resultsMap[period] || resultsMap['1y']; // Default to 1 year if not found
+    
     setTimeout(() => res.status(200).json(mockResults), 1500); // Simulate delay
 });
 
