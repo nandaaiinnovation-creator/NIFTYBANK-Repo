@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import SectionCard from './SectionCard';
 import { tradingRules } from '../constants';
 import type { TradingRule } from '../types';
+import { saveRuleConfiguration } from '../services/api';
 
-interface CustomizableRule extends TradingRule {
+export interface CustomizableRule extends TradingRule {
   isActive: boolean;
   weight: number;
 }
@@ -16,6 +17,8 @@ const initialRules: CustomizableRule[] = tradingRules.map(rule => ({
 
 const RuleCustomizer: React.FC = () => {
   const [rules, setRules] = useState<CustomizableRule[]>(initialRules);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
 
   const handleToggle = (title: string) => {
     setRules(rules.map(rule => 
@@ -33,6 +36,21 @@ const RuleCustomizer: React.FC = () => {
       setRules(initialRules);
   }
 
+  const handleSave = async () => {
+      setIsSaving(true);
+      setSaveStatus('idle');
+      try {
+          await saveRuleConfiguration(rules);
+          setSaveStatus('success');
+      } catch (error) {
+          console.error("Failed to save configuration:", error);
+          // Optionally, set an error status to show in the UI
+      } finally {
+          setIsSaving(false);
+          setTimeout(() => setSaveStatus('idle'), 2500); // Reset status after 2.5s
+      }
+  }
+
   return (
     <SectionCard title="Rule Engine Customizer" iconClass="fa-solid fa-sliders">
         <p className="text-gray-400 mb-4">
@@ -42,8 +60,14 @@ const RuleCustomizer: React.FC = () => {
             <button onClick={handleReset} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
                 <i className="fas fa-undo mr-2"></i>Reset to Defaults
             </button>
-            <button className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-md transition-colors">
-                <i className="fas fa-save mr-2"></i>Save Configuration
+            <button 
+                onClick={handleSave} 
+                disabled={isSaving}
+                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-md transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed w-40 text-center"
+            >
+                {isSaving ? <><i className="fas fa-spinner fa-spin mr-2"></i>Saving...</> : 
+                 saveStatus === 'success' ? <><i className="fas fa-check-circle mr-2"></i>Saved!</> :
+                 <><i className="fas fa-save mr-2"></i>Save Configuration</>}
             </button>
         </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

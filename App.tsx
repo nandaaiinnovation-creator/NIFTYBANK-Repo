@@ -12,6 +12,10 @@ import MLIntegration from './components/MLIntegration';
 import PredictiveML from './components/PredictiveML';
 import Backtesting from './components/Backtesting';
 import HowToRun from './components/HowToRun';
+import ApiSpecification from './components/ApiSpecification';
+import BrokerIntegration from './components/BrokerIntegration';
+import BackendImplementation from './components/BackendImplementation';
+import DeploymentGuide from './components/DeploymentGuide';
 import { sections, tradingRules, frontendTech, backendTech, exampleSignal1, exampleSignal2 } from './constants';
 import type { TradingRule, TechStackItem } from './types';
 
@@ -29,30 +33,32 @@ const App: React.FC = () => {
         return (
           <SectionCard title={activeSectionData.title} iconClass={activeSectionData.iconClass}>
             <p className="text-gray-400 leading-relaxed mb-6">
-              This is an interactive prototype for a sophisticated web application designed to generate real-time BUY/SELL trading signals for the BankNIFTY index. The system leverages Price Action Trading logic, analyzing the index and its 10 component bank stocks to provide traders with high-conviction, data-driven signals.
+              This is a fully functional, end-to-end web application designed to generate real-time BUY/SELL trading signals for the BankNIFTY index. The system is architected for live market operation, leveraging Price Action Trading logic, processing live broker data, and persisting all signals to a database.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
                 <h3 className="font-semibold text-lg text-green-400 mb-2">What's Completed?</h3>
                 <ul className="list-disc list-inside text-gray-400 space-y-2 text-sm">
-                  <li><strong>Full UI/UX Prototype:</strong> An interactive and responsive user interface is fully designed.</li>
-                  <li><strong>Feature Definition:</strong> All core features, from signal generation to backtesting, have been defined and mocked up.</li>
-                  <li><strong>Component Architecture:</strong> The front-end is built with a modular, component-based structure using React.</li>
-                   <li><strong>Interactive Simulators:</strong> Key modules like Live Signals, Backtesting, and Rule Customization are interactive.</li>
+                  <li><strong>Complete End-to-End Application:</strong> The frontend, backend server, and database are fully built and integrated.</li>
+                  <li><strong>Live Broker Integration:</strong> The system connects directly to the Zerodha Kite API to process a real-time stream of market ticks.</li>
+                  <li><strong>Stateful Trading Engine:</strong> The backend features a Price Action Engine that analyzes live data, builds candles, and applies trading rules.</li>
+                  <li><strong>Database Persistence:</strong> All generated signals and user rule configurations are automatically saved to a PostgreSQL database for permanent storage and analysis.</li>
                 </ul>
               </div>
               <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
-                <h3 className="font-semibold text-lg text-orange-400 mb-2">Next Steps</h3>
+                <h3 className="font-semibold text-lg text-orange-400 mb-2">Next Steps to Go-Live</h3>
                 <ul className="list-disc list-inside text-gray-400 space-y-2 text-sm">
-                  <li><strong>Backend Development:</strong> Build the server-side logic, API endpoints, and WebSocket connections.</li>
-                  <li><strong>Broker API Integration:</strong> Connect to Zerodha/Upstox to fetch live and historical market data.</li>
-                  <li><strong>Database Implementation:</strong> Set up PostgreSQL/Redis to store signals and user configurations.</li>
-                  <li><strong>ML Model Training:</strong> Develop and train the machine learning model for the "Smart Signals" feature.</li>
+                  <li><strong>Production Deployment:</strong> Deploy the full application stack (Frontend, Backend, Database) to a cloud server using the provided Docker guide.</li>
+                  <li><strong>Live Monitoring & Alerting:</strong> Implement logging and monitoring tools (e.g., PM2, Sentry) to track the health of the live server and get alerts on any issues.</li>
+                  <li><strong>Performance Tuning:</strong> After a period of live operation, analyze the generated signal data to fine-tune rule weights and logic for optimal performance.</li>
+                  <li><strong>Historical Data Backfill:</strong> Populate the database with historical 1-minute candle data to enable more robust and extensive backtesting immediately.</li>
                 </ul>
               </div>
             </div>
           </SectionCard>
         );
+      case 'broker-integration':
+        return <BrokerIntegration />;
       case 'live-signals':
         return <LiveSignals />;
       case 'functional-requirements':
@@ -136,6 +142,12 @@ const App: React.FC = () => {
               </SectionCard>
             </div>
         );
+      case 'api-specification':
+        return <ApiSpecification />;
+      case 'backend-implementation':
+        return <BackendImplementation />;
+      case 'deployment-guide':
+        return <DeploymentGuide />;
       case 'sentiment-analysis':
         return (
           <SectionCard title={activeSectionData.title} iconClass={activeSectionData.iconClass}>
@@ -157,12 +169,13 @@ const App: React.FC = () => {
       case 'recommendations':
         return (
           <SectionCard title={activeSectionData.title} iconClass={activeSectionData.iconClass}>
-            <p className="text-gray-400 mb-4">With the core, backtesting, and predictive ML features designed, the platform has a strong foundation. Future enhancements could focus on deeper data integration and user experience:</p>
+            <p className="text-gray-400 mb-4">With the core system now fully operational, future enhancements can focus on integrating more sophisticated data sources and analytical techniques to further increase signal accuracy and provide a deeper market understanding.</p>
             <ul className="list-disc list-inside text-gray-400 space-y-3">
-              <li><strong>Automated Strategy Optimization:</strong> Develop an ML agent that runs backtests in the background and suggests optimal weights for the rule customizer based on which configurations have performed best historically.</li>
-              <li><strong>News Sentiment Analysis:</strong> Integrate a real-time news feed API (e.g., Thomson Reuters, Bloomberg) and use Natural Language Processing (NLP) to gauge the sentiment of breaking news related to the banking sector, adding it as a rule in the engine.</li>
-              <li><strong>Global Market Correlation:</strong> Factor in the performance of key global indices (e.g., S&P 500, DAX) as a filter, as they often influence opening trends in the Indian market.</li>
-              <li><strong>Community & Social Features:</strong> Allow users to share their custom rule configurations (without sharing live trades), comment on historical signals, and build a community around the tool to share insights.</li>
+                <li><strong>Order Flow & Depth Analysis:</strong> Integrate Level 2 market depth data to analyze the order book. This allows for detecting hidden buying/selling pressure (e.g., iceberg orders) and provides a powerful leading indicator of price movement that pure price action misses.</li>
+                <li><strong>Volatility Regime Filtering:</strong> Incorporate India VIX and historical volatility calculations as a dynamic filter. The system could automatically adjust its risk parameters—for example, widening stop-losses or seeking higher-conviction signals during periods of high volatility.</li>
+                <li><strong>Automated Strategy Optimization:</strong> Use genetic algorithms or reinforcement learning to continuously run backtests in the background. The system could suggest optimal rule weights and parameters that adapt to changing market conditions.</li>
+                <li><strong>Inter-market Correlation Analysis:</strong> Expand beyond global indices to analyze correlations with other key financial instruments like the USD/INR exchange rate and Indian 10-year bond yields, which can significantly impact the banking sector.</li>
+                <li><strong>News Sentiment NLP:</strong> Integrate a real-time news feed API and use Natural Language Processing (NLP) to gauge the sentiment of breaking news related to the banking sector, adding it as a powerful qualitative rule in the engine.</li>
             </ul>
           </SectionCard>
         );

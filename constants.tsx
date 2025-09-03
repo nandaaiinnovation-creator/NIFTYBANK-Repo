@@ -4,6 +4,7 @@ import type { Signal, TradingRule, TechStackItem, Section } from './types';
 
 export const sections: Section[] = [
     { id: 'overview', title: 'Overview', iconClass: 'fa-solid fa-book-open' },
+    { id: 'broker-integration', title: 'Broker Integration', iconClass: 'fa-solid fa-link' },
     { id: 'live-signals', title: 'Live Signals', iconClass: 'fa-solid fa-tower-broadcast' },
     { id: 'functional-requirements', title: 'Functional Requirements', iconClass: 'fa-solid fa-list-check' },
     { id: 'data-sources', title: 'Data Sources', iconClass: 'fa-solid fa-database' },
@@ -15,6 +16,9 @@ export const sections: Section[] = [
     { id: 'signal-structure', title: 'Signal Notification', iconClass: 'fa-solid fa-message' },
     { id: 'ui-design', title: 'UI Design', iconClass: 'fa-solid fa-palette' },
     { id: 'tech-stack', title: 'Technology Stack', iconClass: 'fa-solid fa-microchip' },
+    { id: 'api-specification', title: 'API Specification', iconClass: 'fa-solid fa-code-branch' },
+    { id: 'backend-implementation', title: 'Backend Implementation', iconClass: 'fa-solid fa-cogs' },
+    { id: 'deployment-guide', title: 'Deployment Guide', iconClass: 'fa-brands fa-docker' },
     { id: 'sentiment-analysis', title: 'Market Sentiment', iconClass: 'fa-solid fa-magnifying-glass-chart' },
     { id: 'feedback-mechanism', title: 'Post-Market Feedback', iconClass: 'fa-solid fa-book' },
     { id: 'how-to-run', title: 'How to Run', iconClass: 'fa-solid fa-terminal' },

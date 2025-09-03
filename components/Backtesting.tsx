@@ -1,50 +1,33 @@
 import React, { useState } from 'react';
 import SectionCard from './SectionCard';
+import { runBacktest } from '../services/api';
+import type { BacktestResults } from '../types';
 
 const Backtesting: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
-    const [results, setResults] = useState<any | null>(null);
+    const [results, setResults] = useState<BacktestResults | null>(null);
     const [period, setPeriod] = useState<string>('3'); // Default to 3 years
 
-    const handleRunBacktest = () => {
+    const handleRunBacktest = async () => {
         setIsLoading(true);
         setResults(null);
-        setTimeout(() => {
-            // Mock results based on the selected period
-            let mockResults;
-            switch (period) {
-                case '1':
-                    mockResults = {
-                        period: "1 Year",
-                        winRate: "71.2%",
-                        profitFactor: "2.3",
-                        totalTrades: "151",
-                        maxDrawdown: "9.8%",
-                    };
-                    break;
-                case '5':
-                     mockResults = {
-                        period: "5 Years",
-                        winRate: "67.9%",
-                        profitFactor: "1.9",
-                        totalTrades: "743",
-                        maxDrawdown: "14.1%",
-                    };
-                    break;
-                case '3':
-                default:
-                    mockResults = {
-                        period: "3 Years",
-                        winRate: "68.5%",
-                        profitFactor: "2.1",
-                        totalTrades: "452",
-                        maxDrawdown: "12.3%",
-                    };
-                    break;
-            }
-            setResults(mockResults);
+        
+        const backtestConfig = {
+            period,
+            timeframe: '3m', // Example value
+            stopLoss: 0.5, // Example value
+            takeProfit: 1.0 // Example value
+        };
+        
+        try {
+            const apiResults = await runBacktest(backtestConfig);
+            setResults(apiResults);
+        } catch (error) {
+            console.error("Backtest failed:", error);
+            // Here you could set an error state to show in the UI
+        } finally {
             setIsLoading(false);
-        }, 2000);
+        }
     };
 
     return (

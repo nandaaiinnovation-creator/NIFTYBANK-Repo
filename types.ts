@@ -30,3 +30,11 @@ export interface Section {
   title: string;
   iconClass: string;
 }
+
+export interface BacktestResults {
+    period: string;
+    winRate: string;
+    profitFactor: string;
+    totalTrades: string;
+    maxDrawdown: string;
+}
