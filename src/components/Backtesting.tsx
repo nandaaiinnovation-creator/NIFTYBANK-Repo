@@ -102,6 +102,7 @@ const Backtesting: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [selectedSignal, setSelectedSignal] = useState<BacktestSignal | null>(null);
     const [activeTab, setActiveTab] = useState<'summary' | 'equity' | 'chart' | 'log' | 'signal'>('summary');
+    const [isConfigOpen, setIsConfigOpen] = useState(true);
     const [config, setConfig] = useState({
         instrument: 'BANKNIFTY',
         period: '1 month',
@@ -200,128 +201,135 @@ const Backtesting: React.FC = () => {
                 <h2 className="text-md font-semibold text-white">Backtesting Engine</h2>
             </div>
             
-            <div className="flex flex-col lg:flex-row gap-2 flex-grow overflow-hidden">
+            <div className="flex-grow space-y-4 overflow-y-auto">
                 {/* --- CONFIGURATION PANEL --- */}
-                <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-zinc-950 p-3 border border-zinc-800 flex flex-col">
-                     <h3 className="font-semibold text-white mb-4 text-sm flex-shrink-0">Configuration</h3>
-                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                        {/* Instrument & Date Range */}
-                        <div className="space-y-3">
-                            <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1 mb-2">Scope</h4>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1">Instrument</label>
-                                <select value={config.instrument} onChange={(e) => setConfig(prev => ({ ...prev, instrument: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
-                                    {instruments.map(i => <option key={i} value={i}>{i}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1">Historical Range</label>
-                                <select value={config.dateRangeType === 'custom' ? 'Custom Range' : config.period} onChange={(e) => setConfig(prev => ({ ...prev, dateRangeType: e.target.value === 'Custom Range' ? 'custom' : 'period', period: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
-                                    {periods.map(p => <option key={p} value={p}>{p}</option>)}
-                                </select>
-                            </div>
-                            {config.dateRangeType === 'custom' && (
-                                <div className="grid grid-cols-2 gap-3 animate-fade-in">
+                <div className="bg-zinc-950 border border-zinc-800">
+                     <button onClick={() => setIsConfigOpen(!isConfigOpen)} className="w-full flex justify-between items-center p-3 hover:bg-zinc-800/50">
+                        <h3 className="font-semibold text-white text-sm">Configuration</h3>
+                        <i className={`fa-solid fa-chevron-down text-zinc-400 transition-transform ${isConfigOpen ? '' : '-rotate-90'}`}></i>
+                     </button>
+                     
+                     {isConfigOpen && (
+                        <div className="p-3 border-t border-zinc-800">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {/* Scope */}
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1">Scope</h4>
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">From</label>
-                                        <input type="date" value={config.from} onChange={e => setConfig(prev => ({...prev, from: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">Instrument</label>
+                                        <select value={config.instrument} onChange={(e) => setConfig(prev => ({ ...prev, instrument: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
+                                            {instruments.map(i => <option key={i} value={i}>{i}</option>)}
+                                        </select>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">To</label>
-                                        <input type="date" value={config.to} onChange={e => setConfig(prev => ({...prev, to: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">Historical Range</label>
+                                        <select value={config.dateRangeType === 'custom' ? 'Custom Range' : config.period} onChange={(e) => setConfig(prev => ({ ...prev, dateRangeType: e.target.value === 'Custom Range' ? 'custom' : 'period', period: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
+                                            {periods.map(p => <option key={p} value={p}>{p}</option>)}
+                                        </select>
                                     </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Timeframe */}
-                         <div className="space-y-2">
-                             <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1 mb-2">Timeframe</h4>
-                            <div className="flex items-center gap-2">
-                                {timeframes.map(tf => (<button key={tf} onClick={() => setConfig(prev => ({ ...prev, timeframe: tf }))} className={`px-2 py-1 text-xs rounded-sm ${config.timeframe === tf ? 'bg-cyan-500 text-white' : 'bg-zinc-700 hover:bg-zinc-600 text-gray-300'}`}>{tf}</button>))}
-                            </div>
-                        </div>
-                        
-                        {/* Advanced Strategy Config */}
-                        <div className="space-y-3">
-                            <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1 mb-2">Strategy & Risk</h4>
-                             <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1">Backtest Mode</label>
-                                <select value={config.mode} onChange={(e) => setConfig(prev => ({ ...prev, mode: e.target.value as any }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
-                                    <option value="simple">Simple</option>
-                                    <option value="walk-forward">Walk-Forward Optimization</option>
-                                </select>
-                            </div>
-
-                            {config.mode === 'walk-forward' && (
-                                <div className="grid grid-cols-2 gap-3 animate-fade-in bg-zinc-800/50 p-2 rounded-sm border border-zinc-700">
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">Train (Months)</label>
-                                        <input type="number" value={config.walkForwardTrain} onChange={e => setConfig(prev => ({...prev, walkForwardTrain: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">Test (Months)</label>
-                                        <input type="number" value={config.walkForwardTest} onChange={e => setConfig(prev => ({...prev, walkForwardTest: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs font-medium text-gray-400">Exit Strategy</label>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => setConfig(p => ({...p, tradeExitStrategy: 'stop'}))} className={`px-2 py-1 text-xs rounded-sm ${config.tradeExitStrategy === 'stop' ? 'bg-cyan-500 text-white' : 'bg-zinc-700 text-gray-300'}`}>SL/TP</button>
-                                    <button onClick={() => setConfig(p => ({...p, tradeExitStrategy: 'signal'}))} className={`px-2 py-1 text-xs rounded-sm ${config.tradeExitStrategy === 'signal' ? 'bg-cyan-500 text-white' : 'bg-zinc-700 text-gray-300'}`}>Signal-to-Signal</button>
-                                </div>
-                            </div>
-                            
-                            <div className={`space-y-3 transition-opacity ${config.tradeExitStrategy === 'signal' ? 'opacity-50' : 'opacity-100'}`}>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss Type</label>
-                                    <select value={config.stopLossType} onChange={(e) => setConfig(prev => ({ ...prev, stopLossType: e.target.value as any }))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm disabled:cursor-not-allowed">
-                                        <option value="percent">Percentage (%)</option>
-                                        <option value="atr">ATR Multiplier</option>
-                                    </select>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {config.stopLossType === 'percent' ? (
-                                        <>
+                                    {config.dateRangeType === 'custom' && (
+                                        <div className="grid grid-cols-2 gap-3 animate-fade-in">
                                             <div>
-                                                <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss (%)</label>
-                                                <input type="number" value={config.sl} onChange={e => setConfig(prev => ({...prev, sl: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                <label className="block text-xs font-medium text-gray-400 mb-1">From</label>
+                                                <input type="date" value={config.from} onChange={e => setConfig(prev => ({...prev, from: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-medium text-gray-400 mb-1">Take Profit (%)</label>
-                                                <input type="number" value={config.tp} onChange={e => setConfig(prev => ({...prev, tp: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                <label className="block text-xs font-medium text-gray-400 mb-1">To</label>
+                                                <input type="date" value={config.to} onChange={e => setConfig(prev => ({...prev, to: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
                                             </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                             <div>
-                                                <label className="block text-xs font-medium text-gray-400 mb-1">ATR Multiplier (SL)</label>
-                                                <input type="number" value={config.atrMultiplier} onChange={e => setConfig(prev => ({...prev, atrMultiplier: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Timeframe */}
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1">Timeframe</h4>
+                                    <div className="flex items-center gap-2">
+                                        {timeframes.map(tf => (<button key={tf} onClick={() => setConfig(prev => ({ ...prev, timeframe: tf }))} className={`px-2 py-1 text-xs rounded-sm ${config.timeframe === tf ? 'bg-cyan-500 text-white' : 'bg-zinc-700 hover:bg-zinc-600 text-gray-300'}`}>{tf}</button>))}
+                                    </div>
+                                </div>
+                                {/* Strategy */}
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1">Strategy & Risk</h4>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-medium text-gray-400">Exit Strategy</label>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setConfig(p => ({...p, tradeExitStrategy: 'stop'}))} className={`px-2 py-1 text-xs rounded-sm ${config.tradeExitStrategy === 'stop' ? 'bg-cyan-500 text-white' : 'bg-zinc-700 text-gray-300'}`}>SL/TP</button>
+                                            <button onClick={() => setConfig(p => ({...p, tradeExitStrategy: 'signal'}))} className={`px-2 py-1 text-xs rounded-sm ${config.tradeExitStrategy === 'signal' ? 'bg-cyan-500 text-white' : 'bg-zinc-700 text-gray-300'}`}>Signal-to-Signal</button>
+                                        </div>
+                                    </div>
+                                    <div className={`space-y-3 transition-opacity ${config.tradeExitStrategy === 'signal' ? 'opacity-50' : 'opacity-100'}`}>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss Type</label>
+                                            <select value={config.stopLossType} onChange={(e) => setConfig(prev => ({ ...prev, stopLossType: e.target.value as any }))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm disabled:cursor-not-allowed">
+                                                <option value="percent">Percentage (%)</option>
+                                                <option value="atr">ATR Multiplier</option>
+                                            </select>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {config.stopLossType === 'percent' ? (
+                                                <>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss (%)</label>
+                                                        <input type="number" value={config.sl} onChange={e => setConfig(prev => ({...prev, sl: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-400 mb-1">Take Profit (%)</label>
+                                                        <input type="number" value={config.tp} onChange={e => setConfig(prev => ({...prev, tp: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                     <div>
+                                                        <label className="block text-xs font-medium text-gray-400 mb-1">ATR Multiplier (SL)</label>
+                                                        <input type="number" value={config.atrMultiplier} onChange={e => setConfig(prev => ({...prev, atrMultiplier: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                    </div>
+                                                     <div>
+                                                        <label className="block text-xs font-medium text-gray-400 mb-1">Risk/Reward (TP)</label>
+                                                        <input type="number" value={parseFloat(config.sl) > 0 ? parseFloat(config.tp) / parseFloat(config.sl) : 0} onChange={e => setConfig(prev => ({...prev, tp: (parseFloat(e.target.value) * parseFloat(prev.sl)).toString() }))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Mode */}
+                                <div className="space-y-3">
+                                    <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1">Optimization</h4>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">Backtest Mode</label>
+                                        <select value={config.mode} onChange={(e) => setConfig(prev => ({ ...prev, mode: e.target.value as any }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
+                                            <option value="simple">Simple</option>
+                                            <option value="walk-forward">Walk-Forward Optimization</option>
+                                        </select>
+                                    </div>
+                                    {config.mode === 'walk-forward' && (
+                                        <div className="grid grid-cols-2 gap-3 animate-fade-in bg-zinc-800/50 p-2 rounded-sm border border-zinc-700">
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-400 mb-1">Train (Months)</label>
+                                                <input type="number" value={config.walkForwardTrain} onChange={e => setConfig(prev => ({...prev, walkForwardTrain: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
                                             </div>
-                                             <div>
-                                                <label className="block text-xs font-medium text-gray-400 mb-1">Risk/Reward (TP)</label>
-                                                <input type="number" value={parseFloat(config.tp) / parseFloat(config.sl)} onChange={e => setConfig(prev => ({...prev, tp: (parseFloat(e.target.value) * parseFloat(prev.sl)).toString() }))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-400 mb-1">Test (Months)</label>
+                                                <input type="number" value={config.walkForwardTest} onChange={e => setConfig(prev => ({...prev, walkForwardTest: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
                                             </div>
-                                        </>
+                                        </div>
                                     )}
                                 </div>
                             </div>
+                            <div className="mt-4 flex justify-end">
+                                 <button onClick={handleRunBacktest} disabled={isLoading} className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-600 disabled:cursor-not-allowed text-white font-bold py-2 px-6 text-sm rounded-sm flex items-center justify-center gap-2">
+                                    {isLoading ? <><i className="fas fa-spinner fa-spin"></i> Running...</> : <><i className="fas fa-play"></i> Run Backtest</>}
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                    <div className="mt-4 flex-shrink-0">
-                         <button onClick={handleRunBacktest} disabled={isLoading} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 text-sm rounded-sm flex items-center justify-center gap-2">
-                            {isLoading ? <><i className="fas fa-spinner fa-spin"></i> Running...</> : <><i className="fas fa-play"></i> Run Backtest</>}
-                        </button>
-                    </div>
+                     )}
                 </div>
 
                 {/* --- RESULTS PANEL --- */}
-                <div className="flex-1 bg-zinc-950 p-2 border border-zinc-800 min-h-[400px] flex flex-col">
+                 <div className="bg-zinc-950 p-2 border border-zinc-800 min-h-[600px] flex flex-col">
                     <h3 className="font-semibold text-white mb-2 text-sm flex-shrink-0">Backtest Results</h3>
-                    {isLoading && <div className="flex flex-col items-center justify-center h-full text-zinc-500"><i className="fas fa-chart-line text-4xl mb-3 animate-pulse"></i><p className="text-md">Fetching & Analyzing Historical Data...</p>{config.mode === 'walk-forward' && <p className="text-sm mt-2">Walk-forward analysis may take several minutes.</p>}</div>}
-                    {!isLoading && !results && <div className="flex flex-col items-center justify-center h-full text-zinc-600 text-center"><i className="fas fa-vial-circle-check text-4xl mb-3"></i><p className="text-md">Ready to run analysis</p><p className="text-xs mt-1">{error ? <span className="text-red-400">{error}</span> : 'Configure parameters and click "Run Backtest".'}</p></div>}
+                    {isLoading && <div className="flex flex-col items-center justify-center flex-grow text-zinc-500"><i className="fas fa-chart-line text-4xl mb-3 animate-pulse"></i><p className="text-md">Fetching & Analyzing Historical Data...</p>{config.mode === 'walk-forward' && <p className="text-sm mt-2">Walk-forward analysis may take several minutes.</p>}</div>}
+                    {!isLoading && !results && <div className="flex flex-col items-center justify-center flex-grow text-zinc-600 text-center"><i className="fas fa-vial-circle-check text-4xl mb-3"></i><p className="text-md">Ready to run analysis</p><p className="text-xs mt-1">{error ? <span className="text-red-400">{error}</span> : 'Configure parameters and click "Run Backtest".'}</p></div>}
                     
                     {results && (
                         <div className="flex-grow flex flex-col gap-2 overflow-hidden">
