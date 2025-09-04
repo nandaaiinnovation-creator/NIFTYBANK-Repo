@@ -5,7 +5,7 @@ import type { SignalPerformance } from '../types';
 import { runSignalAnalysis } from '../services/api';
 
 const originalSignal = {
-  time: "11:32 AM",
+  time: new Date().toISOString(),
   symbol: "BANKNIFTY",
   price: 54120,
   direction: SignalDirection.BUY,
@@ -80,13 +80,21 @@ const PerformanceAnalysisContent: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [results, setResults] = useState<SignalPerformance | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [config, setConfig] = useState({ sl: '0.5', tp: '1.0' });
 
     const handleRunAnalysis = async () => {
         setIsLoading(true);
         setError(null);
         setResults(null);
         try {
-            const data = await runSignalAnalysis();
+            const analysisConfig = {
+                sl: parseFloat(config.sl),
+                tp: parseFloat(config.tp)
+            };
+            if (isNaN(analysisConfig.sl) || isNaN(analysisConfig.tp)) {
+                throw new Error("Invalid Stop Loss or Take Profit values.");
+            }
+            const data = await runSignalAnalysis(analysisConfig);
             setResults(data);
         } catch (err: any) {
             setError(err.message || "An unknown error occurred.");
@@ -98,13 +106,21 @@ const PerformanceAnalysisContent: React.FC = () => {
     return (
         <div className="bg-zinc-950 border border-zinc-800 p-3">
             <p className="text-zinc-400 mb-3 leading-relaxed text-center max-w-3xl mx-auto text-xs">
-                This tool analyzes the performance of all signals from the last 24 hours. It validates each signal against subsequent price action to determine its profitability, providing a clear feedback loop on your rule configuration's effectiveness.
+                This tool analyzes signals from the last 24 hours against your strategy. It validates each signal to determine its profitability, providing a clear feedback loop on your configuration's effectiveness.
             </p>
-            <div className="text-center mb-3">
+            <div className="flex flex-col md:flex-row items-center justify-center gap-3 mb-3 bg-zinc-900 p-2 border border-zinc-800">
+                <div className="flex items-center gap-2">
+                    <label htmlFor="sl" className="text-xs font-medium text-gray-400">Stop Loss (%):</label>
+                    <input type="number" id="sl" value={config.sl} onChange={e => setConfig(prev => ({...prev, sl: e.target.value}))} className="w-20 bg-zinc-800 border border-zinc-700 p-1 text-white text-xs" step="0.1" />
+                </div>
+                 <div className="flex items-center gap-2">
+                    <label htmlFor="tp" className="text-xs font-medium text-gray-400">Take Profit (%):</label>
+                    <input type="number" id="tp" value={config.tp} onChange={e => setConfig(prev => ({...prev, tp: e.target.value}))} className="w-20 bg-zinc-800 border border-zinc-700 p-1 text-white text-xs" step="0.1" />
+                </div>
                 <button 
                     onClick={handleRunAnalysis} 
                     disabled={isLoading}
-                    className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-600 text-white font-bold py-1.5 px-4 text-xs rounded-sm transition-colors flex items-center justify-center gap-2 mx-auto"
+                    className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-600 text-white font-bold py-1.5 px-4 text-xs rounded-sm transition-colors flex items-center justify-center gap-2"
                 >
                     {isLoading ? <><i className="fas fa-spinner fa-spin"></i> Analyzing...</> : <><i className="fas fa-play"></i> Run Analysis</>}
                 </button>

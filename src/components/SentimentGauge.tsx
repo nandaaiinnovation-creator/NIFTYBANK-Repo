@@ -1,8 +1,28 @@
 import React from 'react';
 
-const SentimentGauge: React.FC = () => {
-  const sentiment = 75; // Example: 75% bullish
+interface SentimentGaugeProps {
+  sentiment: number; // A score from 0 (bearish) to 100 (bullish)
+}
+
+const SentimentGauge: React.FC<SentimentGaugeProps> = ({ sentiment }) => {
   const rotation = (sentiment / 100) * 180 - 90;
+
+  let sentimentText = 'Neutral';
+  let textColor = 'text-amber-400';
+
+  if (sentiment > 80) { 
+      sentimentText = 'Strong Bullish'; 
+      textColor = 'text-green-400'; 
+  } else if (sentiment > 60) { 
+      sentimentText = 'Bullish'; 
+      textColor = 'text-green-500'; 
+  } else if (sentiment < 20) { 
+      sentimentText = 'Strong Bearish'; 
+      textColor = 'text-red-400'; 
+  } else if (sentiment < 40) { 
+      sentimentText = 'Bearish'; 
+      textColor = 'text-red-500'; 
+  }
 
   return (
     <div className="w-full h-full p-1 bg-zinc-900 text-center flex flex-col justify-center">
@@ -25,7 +45,7 @@ const SentimentGauge: React.FC = () => {
                  <div className="w-2 h-2 bg-white rounded-full absolute bottom-[-4px] left-1/2 -translate-x-1/2"></div>
             </div>
         </div>
-        <div className="text-xs font-bold text-green-400">Strong Bullish</div>
+        <div className={`text-xs font-bold ${textColor}`}>{sentimentText}</div>
         <div className="flex justify-between text-[10px] text-zinc-500 px-1">
             <span>Bearish</span>
             <span>Neutral</span>

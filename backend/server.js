@@ -147,9 +147,10 @@ app.post('/api/rules', async (req, res) => {
 });
 
 app.post('/api/ml/analyze-signals', async (req, res) => {
-    console.log('Received request to analyze signal performance...');
+    const analysisConfig = req.body;
+    console.log('Received request to analyze signal performance with config:', analysisConfig);
     try {
-        const results = await engine.analyzeSignalPerformance();
+        const results = await engine.analyzeSignalPerformance(analysisConfig);
         res.status(200).json(results);
     } catch (error) {
         console.error("Signal performance analysis failed on server:", error);

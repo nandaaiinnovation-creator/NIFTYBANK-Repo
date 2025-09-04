@@ -48,7 +48,7 @@ export interface BacktestSignal extends Signal {
 export interface BacktestResults {
     period: string;
     timeframe: string;
-    candles: BacktestCandle[];
+    candles?: BacktestCandle[];
     signals: BacktestSignal[];
     dataSourceMessage?: string;
     winRate: string;

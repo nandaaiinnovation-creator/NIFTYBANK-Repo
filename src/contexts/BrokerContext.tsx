@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect, useRef } from 'react';
 import { connectToBroker as apiConnectToBroker, startLiveSignalStream, stopLiveSignalStream } from '../services/api';
 import type { Signal } from '../types';
 
@@ -20,14 +20,16 @@ interface BrokerContextType {
     signals3m: Signal[];
     signals5m: Signal[];
     signals15m: Signal[];
-    isStreaming: boolean;
+    sentiment: number;
+    isChartLive: boolean;
+    isSignalFeedActive: boolean;
     isModalOpen: boolean;
     setApiKey: (key: string) => void;
     setAccessToken: (token: string) => void;
     connect: () => Promise<void>;
     disconnect: () => void;
-    startStream: () => void;
-    stopStream: () => void;
+    toggleChartLive: () => void;
+    toggleSignalFeedActive: () => void;
     openModal: () => void;
     closeModal: () => void;
 }
@@ -44,11 +46,31 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [signals3m, setSignals3m] = useState<Signal[]>([]);
     const [signals5m, setSignals5m] = useState<Signal[]>([]);
     const [signals15m, setSignals15m] = useState<Signal[]>([]);
-    const [isStreaming, setIsStreaming] = useState(false);
+    const [sentiment, setSentiment] = useState(50); // Default to Neutral (50)
+    
+    // Granular streaming controls
+    const [isChartLive, setIsChartLive] = useState(false);
+    const [isSignalFeedActive, setIsSignalFeedActive] = useState(false);
+
     const [isModalOpen, setIsModalOpen] = useState(false);
+    
+    // For signal batching to prevent UI lag
+    const signalQueueRef = useRef<Signal[]>([]);
+    const batchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const openModal = () => setIsModalOpen(true);
     const closeModal = () => setIsModalOpen(false);
+
+    const processSignalQueue = useCallback(() => {
+        if (signalQueueRef.current.length === 0) return;
+
+        const signalsToProcess = [...signalQueueRef.current];
+        signalQueueRef.current = [];
+
+        setSignals3m(prev => [...signalsToProcess.filter(s => s.timeframe === '3m'), ...prev.slice(0, 99)]);
+        setSignals5m(prev => [...signalsToProcess.filter(s => s.timeframe === '5m'), ...prev.slice(0, 99)]);
+        setSignals15m(prev => [...signalsToProcess.filter(s => s.timeframe === '15m'), ...prev.slice(0, 99)]);
+    }, []);
 
     const connect = useCallback(async () => {
         if (!apiKey.trim() || !accessToken.trim()) {
@@ -56,14 +78,10 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             setMessage('API Key & Access Token are required.');
             return;
         }
-
         setStatus('connecting');
         setMessage('Connecting to broker...');
         try {
-            // The API call initiates the connection, but the final status ('connected' or 'error')
-            // will be confirmed via a WebSocket message from the backend.
             await apiConnectToBroker(apiKey, accessToken);
-            // We no longer set 'connected' here; we wait for the backend's confirmation.
         } catch (error: any) {
             setStatus('error');
             setMessage(error.message || 'Connection failed.');
@@ -72,64 +90,58 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }, [apiKey, accessToken]);
 
     const disconnect = useCallback(() => {
-        stopStream();
+        setIsChartLive(false);
+        setIsSignalFeedActive(false);
         setApiKey('');
         setAccessToken('');
         setStatus('disconnected');
         setMessage('Enter credentials to connect.');
     }, []);
 
-    const startStream = useCallback(() => {
-        if (status === 'connected') {
-            setSignals3m([]);
-            setSignals5m([]);
-            setSignals15m([]);
-            setIsStreaming(true);
-        } else {
-            console.warn("Cannot start stream: broker not connected.");
-            alert("Please connect to the broker first.");
-        }
+    const toggleChartLive = useCallback(() => {
+        if (status === 'connected') setIsChartLive(prev => !prev);
     }, [status]);
-
-    const stopStream = useCallback(() => {
-        setIsStreaming(false);
-    }, []);
+    
+    const toggleSignalFeedActive = useCallback(() => {
+        if (status === 'connected') {
+             if (!isSignalFeedActive) { // When turning on
+                setSignals3m([]);
+                setSignals5m([]);
+                setSignals15m([]);
+            }
+            setIsSignalFeedActive(prev => !prev);
+        }
+    }, [status, isSignalFeedActive]);
 
     useEffect(() => {
-        // The WebSocket stream is now started immediately on connection to get status updates,
-        // but signal/tick processing is controlled by the `isStreaming` flag.
-        if (status === 'connected' || status === 'reconnecting' || (status === 'connecting' && isStreaming)) {
-            const handleSignal = (newSignal: Signal) => {
-                 if (!isStreaming) return;
-                 switch (newSignal.timeframe) {
-                    case '3m':
-                        setSignals3m(prev => [newSignal, ...prev.slice(0, 99)]);
-                        break;
-                    case '5m':
-                        setSignals5m(prev => [newSignal, ...prev.slice(0, 99)]);
-                        break;
-                    case '15m':
-                        setSignals15m(prev => [newSignal, ...prev.slice(0, 99)]);
-                        break;
-                    default:
-                        break;
-                }
+        if (status === 'connected' || status === 'reconnecting') {
+             const handleSignal = (newSignal: Signal) => {
+                 if (!isSignalFeedActive) return;
+                 signalQueueRef.current.push(newSignal);
             };
             const handleTick = (newTick: MarketTick) => {
-                if (!isStreaming) return;
+                if (!isChartLive) return;
                 setLastTick(newTick);
             };
             
             const handleBrokerStatus = (brokerStatus: { status: ConnectionStatus, message: string }) => {
                 setStatus(brokerStatus.status);
                 setMessage(brokerStatus.message);
-                if (brokerStatus.status === 'connected' && !isModalOpen) {
+                if (brokerStatus.status === 'connected' && isModalOpen) {
                     closeModal();
+                }
+                 if (brokerStatus.status !== 'connected') {
+                    setIsChartLive(false);
+                    setIsSignalFeedActive(false);
                 }
             };
 
             const handleMarketStatus = (marketStatus: { status: MarketStatus }) => {
                 setMarketStatus(marketStatus.status);
+            };
+            
+            const handleSentiment = (sentimentPayload: { score: number }) => {
+                setSentiment(sentimentPayload.score);
             };
 
             startLiveSignalStream({ 
@@ -137,35 +149,40 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 onTick: handleTick,
                 onBrokerStatus: handleBrokerStatus,
                 onMarketStatus: handleMarketStatus,
+                onSentiment: handleSentiment,
             });
+
+            // Start batch processing timer
+            if (!batchTimerRef.current) {
+                batchTimerRef.current = setInterval(processSignalQueue, 500);
+            }
         } else {
             stopLiveSignalStream();
+            if (batchTimerRef.current) {
+                clearInterval(batchTimerRef.current);
+                batchTimerRef.current = null;
+            }
         }
 
-        return () => stopLiveSignalStream();
-    }, [status, isStreaming, isModalOpen]);
-
+        return () => {
+            stopLiveSignalStream();
+            if (batchTimerRef.current) {
+                clearInterval(batchTimerRef.current);
+                batchTimerRef.current = null;
+            }
+        }
+    }, [status, isSignalFeedActive, isChartLive, isModalOpen, processSignalQueue]);
 
     const value = {
-        status,
-        message,
-        marketStatus,
-        apiKey,
-        accessToken,
-        lastTick,
-        signals3m,
-        signals5m,
-        signals15m,
-        isStreaming,
+        status, message, marketStatus, apiKey, accessToken, lastTick,
+        signals3m, signals5m, signals15m,
+        sentiment,
+        isChartLive, isSignalFeedActive,
         isModalOpen,
-        setApiKey,
-        setAccessToken,
-        connect,
-        disconnect,
-        startStream,
-        stopStream,
-        openModal,
-        closeModal,
+        setApiKey, setAccessToken,
+        connect, disconnect,
+        toggleChartLive, toggleSignalFeedActive,
+        openModal, closeModal,
     };
 
     return (

@@ -28,6 +28,7 @@ class PriceActionEngine {
     this.timeframes = ['1m', '3m', '5m', '15m'];
     this.candles = {};
     this.timeframes.forEach(tf => this.candles[tf] = null);
+    this.recentSignals = []; // For sentiment calculation
 
     this.currentPrice = 0;
     this.previousDayHigh = 0;
@@ -157,23 +158,25 @@ class PriceActionEngine {
 
   _checkMarketHours() {
     const now = new Date();
-    const istOffset = 5.5 * 60 * 60 * 1000;
-    const istDate = new Date(now.getTime() + istOffset);
-
-    const hours = istDate.getUTCHours();
-    const minutes = istDate.getUTCMinutes();
-    const day = istDate.getUTCDay(); // Sunday = 0, Saturday = 6
+    // Use UTC for server-side logic to avoid timezone issues.
+    // IST is UTC+5:30
+    const hours = now.getUTCHours();
+    const minutes = now.getUTCMinutes();
+    const day = now.getUTCDay();
 
     let currentMarketStatus = 'CLOSED';
+    // Indian Market: Monday (1) to Friday (5)
     if (day > 0 && day < 6) {
-        const timeInMinutes = hours * 60 + minutes;
-        const marketOpen = 9 * 60 + 15;
-        const marketClose = 15 * 60 + 30;
-        if (timeInMinutes >= marketOpen && timeInMinutes <= marketClose) {
+        // Market Open: 9:15 AM IST = 3:45 AM UTC
+        // Market Close: 3:30 PM IST = 10:00 AM UTC
+        const timeInUTCMinutes = hours * 60 + minutes;
+        const marketOpenUTC = 3 * 60 + 45;
+        const marketCloseUTC = 10 * 60;
+        if (timeInUTCMinutes >= marketOpenUTC && timeInUTCMinutes <= marketCloseUTC) {
             currentMarketStatus = 'OPEN';
         }
     }
-
+    
     if (this.marketStatus !== currentMarketStatus) {
         this.marketStatus = currentMarketStatus;
         console.log(`Market status changed to: ${this.marketStatus}`);
@@ -248,7 +251,7 @@ class PriceActionEngine {
   // --- BACKTESTING LOGIC ---
 
   async runHistoricalAnalysis(config) {
-    const { period, timeframe, from, to } = config;
+    const { period, timeframe, from, to, metricsOnly } = config;
     if (!this.kite) {
         throw new Error("Cannot run backtest: broker is not connected.");
     }
@@ -282,17 +285,22 @@ class PriceActionEngine {
     const profitFactor = metrics.totalLoss > 0 ? (metrics.totalProfit / metrics.totalLoss).toFixed(2) : 'N/A';
     const maxDrawdown = (metrics.maxDrawdown * 100).toFixed(2) + '%';
     
-    return {
+    const response = {
         period: period || 'Custom Range',
         timeframe: timeframe,
-        candles: candles.map((c, index) => ({ id: index, ...c, date: c.date.toISOString() })),
         signals,
         dataSourceMessage,
         winRate,
         profitFactor,
-        totalTrades,
+        totalTrades: totalTrades,
         maxDrawdown,
     };
+    
+    if (!metricsOnly) {
+        response.candles = candles.map((c, index) => ({ id: index, ...c, date: c.date.toISOString() }));
+    }
+
+    return response;
   }
   
   async _getHistoricalDataWithCache(config) {
@@ -358,11 +366,9 @@ class PriceActionEngine {
 
   _getDateRange(period, from, to) {
     if (from && to) {
-      // Used by TradingView chart which provides UNIX timestamps in seconds
       return { fromDate: new Date(from * 1000), toDate: new Date(to * 1000) };
     }
     
-    // Used by manual backtesting UI
     const toDate = new Date();
     const fromDate = new Date();
     const [value, unit] = period.split(' ');
@@ -440,11 +446,14 @@ class PriceActionEngine {
     return { wins, losses, totalProfit, totalLoss, peakEquity, maxDrawdown };
   }
 
-  async analyzeSignalPerformance() {
-      console.log("Starting signal performance analysis...");
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  async analyzeSignalPerformance(config = {}) {
+      const { sl = 0.5, tp = 1.0 } = config; // Defaults if not provided
+      console.log(`Starting signal performance analysis with SL=${sl}% and TP=${tp}%...`);
+      
+      const now = new Date();
+      // Use UTC for server-side time calculations to be timezone-agnostic
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-      // 1. Get all signals from the last 24 hours
       const signalsQuery = `
           SELECT *, price as signal_price, direction as signal_direction, rules_passed as signal_rules
           FROM signals 
@@ -457,12 +466,10 @@ class PriceActionEngine {
       }
       console.log(`Found ${signals.length} signals to analyze.`);
       
-      // 2. Determine time range needed for historical data
       const firstSignalTime = signals[0].timestamp;
       const lastSignalTime = signals[signals.length - 1].timestamp;
-      const endTime = new Date(lastSignalTime.getTime() + 30 * 60 * 1000); // 30 mins after last signal
+      const endTime = new Date(lastSignalTime.getTime() + 30 * 60 * 1000);
 
-      // 3. Get all 1-minute candles for the required period
       const candlesQuery = `
           SELECT timestamp, high, low 
           FROM historical_candles 
@@ -477,29 +484,27 @@ class PriceActionEngine {
 
       let wins = 0;
       let losses = 0;
-      const ruleStats = {}; // { "Rule Name": { wins: 0, losses: 0 } }
+      const ruleStats = {};
 
-      // 4. Iterate through each signal and determine outcome
       for (const signal of signals) {
           const entryPrice = parseFloat(signal.signal_price);
-          const stopLoss = signal.signal_direction === 'BUY' ? entryPrice * 0.995 : entryPrice * 1.005; // 0.5% SL
-          const takeProfit = signal.signal_direction === 'BUY' ? entryPrice * 1.01 : entryPrice * 0.99; // 1% TP
+          const stopLossPrice = signal.signal_direction === 'BUY' ? entryPrice * (1 - sl / 100) : entryPrice * (1 + sl / 100);
+          const takeProfitPrice = signal.signal_direction === 'BUY' ? entryPrice * (1 + tp / 100) : entryPrice * (1 - tp / 100);
 
-          let outcome = 'undetermined'; // 'win', 'loss', or 'undetermined'
+          let outcome = 'undetermined';
 
-          // Find candles that occurred after the signal
-          const subsequentCandles = candles.filter(c => c.timestamp > signal.timestamp);
+          const subsequentCandles = candles.filter(c => new Date(c.timestamp) > new Date(signal.timestamp));
 
           for (const candle of subsequentCandles) {
               const high = parseFloat(candle.high);
               const low = parseFloat(candle.low);
 
               if (signal.signal_direction === 'BUY') {
-                  if (high >= takeProfit) { outcome = 'win'; break; }
-                  if (low <= stopLoss) { outcome = 'loss'; break; }
+                  if (high >= takeProfitPrice) { outcome = 'win'; break; }
+                  if (low <= stopLossPrice) { outcome = 'loss'; break; }
               } else { // SELL
-                  if (low <= takeProfit) { outcome = 'win'; break; }
-                  if (high >= stopLoss) { outcome = 'loss'; break; }
+                  if (low <= takeProfitPrice) { outcome = 'win'; break; }
+                  if (high >= stopLossPrice) { outcome = 'loss'; break; }
               }
           }
           
@@ -518,7 +523,6 @@ class PriceActionEngine {
           }
       }
 
-      // 5. Format results
       const totalSignals = wins + losses;
       const winRate = totalSignals > 0 ? ((wins / totalSignals) * 100).toFixed(2) + '%' : '0.00%';
       const rulePerformance = Object.entries(ruleStats).map(([rule, stats]) => {
@@ -567,12 +571,32 @@ class PriceActionEngine {
   }
 
   async _broadcastSignal(signal) {
+    // Add to recent signals for sentiment calculation
+    this.recentSignals.unshift(signal);
+    if (this.recentSignals.length > 20) {
+      this.recentSignals.pop();
+    }
+    
     await this._saveSignalToDb(signal);
     this._logSignalToFile(signal);
     this._broadcast({ type: 'new_signal', payload: signal });
     console.log(`Signal (${signal.timeframe}) broadcasted to ${this.wss.clients.size} clients.`);
+    
+    // Calculate and broadcast sentiment after every new signal
+    this._calculateAndBroadcastSentiment();
   }
   
+  _calculateAndBroadcastSentiment() {
+    if (this.recentSignals.length === 0) {
+        this._broadcast({ type: 'market_sentiment_update', payload: { score: 50 } }); // Neutral
+        return;
+    }
+    const buySignals = this.recentSignals.filter(s => s.direction === 'BUY').length;
+    const sentimentScore = Math.round((buySignals / this.recentSignals.length) * 100);
+    this._broadcast({ type: 'market_sentiment_update', payload: { score: sentimentScore } });
+    console.log(`Market sentiment updated: ${sentimentScore}`);
+  }
+
   _broadcastTick(tick) {
     const payload = { price: tick.last_price, time: tick.timestamp };
     this._broadcast({ type: 'market_tick', payload });

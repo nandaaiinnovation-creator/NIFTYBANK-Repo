@@ -4,18 +4,13 @@ import type { BacktestResults } from '../types';
 import { useBroker } from '../contexts/BrokerContext';
 import TradingViewChart from './TradingViewChart';
 
-const getSignalStrengthText = (conviction: number): string => {
-    if (conviction > 85) return 'Strong';
-    if (conviction > 65) return 'Medium';
-    return 'Low';
-};
-
 const Backtesting: React.FC = () => {
     const { status: brokerStatus } = useBroker();
     const [isLoading, setIsLoading] = useState(false);
     const [results, setResults] = useState<BacktestResults | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [config, setConfig] = useState({ period: '1 month', timeframe: '3m' });
+    const [chartKey, setChartKey] = useState(1);
 
     const handleRunBacktest = async () => {
         if (brokerStatus !== 'connected') {
@@ -27,8 +22,9 @@ const Backtesting: React.FC = () => {
         setError(null);
         
         try {
-            const apiResults = await runBacktest({ ...config, from: 0, to: 0});
+            const apiResults = await runBacktest({ ...config, from: 0, to: 0, metricsOnly: true });
             setResults(apiResults);
+            setChartKey(prev => prev + 1);
         } catch (err: any) {
             console.error("Backtest failed:", err);
             setError(err.message || "An unknown error occurred during the backtest.");
@@ -117,8 +113,9 @@ const Backtesting: React.FC = () => {
                                     <h4 className="font-semibold text-white text-center text-xs mb-1">Signal Visualization</h4>
                                     <div className="h-full w-full bg-zinc-900 border border-zinc-800 flex-grow">
                                         <TradingViewChart 
+                                            key={chartKey}
                                             isLive={false}
-                                            initialData={results.candles}
+                                            backtestConfig={config}
                                             signals={results.signals}
                                         />
                                     </div>
@@ -132,7 +129,7 @@ const Backtesting: React.FC = () => {
                                             [...results.signals].reverse().map((signal, index) => (
                                                 <div key={index} className="bg-zinc-800 p-1.5 text-xs rounded-sm">
                                                     <div className="flex justify-between items-center">
-                                                        <span className="font-bold text-white text-[10px]">{new Date(signal.time).toLocaleString()}</span>
+                                                        <span className="font-bold text-white text-[10px]">{new Date(signal.time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}</span>
                                                         <span className={`font-bold text-xs ${signal.direction === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>{signal.direction} @ {signal.price}</span>
                                                     </div>
                                                 </div>

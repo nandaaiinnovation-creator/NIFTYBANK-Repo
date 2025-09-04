@@ -11,10 +11,11 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
   const cardColor = isBuy ? 'border-green-500/80' : 'border-red-500/80';
   const directionColor = isBuy ? 'text-green-400' : 'text-red-400';
   
-  const time = new Date(signal.time).toLocaleTimeString('en-US', {
+  const time = new Date(signal.time).toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
-    hour12: true
+    hour12: true,
+    timeZone: 'Asia/Kolkata'
   });
 
   return (

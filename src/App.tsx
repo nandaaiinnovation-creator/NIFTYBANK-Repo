@@ -5,7 +5,6 @@ import Backtesting from './components/Backtesting';
 import Dashboard from './components/Dashboard';
 import MLIntelligence from './components/MLIntelligence';
 import SystemArchitecture from './components/SystemArchitecture';
-import { sections } from './constants';
 import BrokerConnectModal from './components/BrokerConnectModal';
 
 const App: React.FC = () => {
@@ -30,7 +29,7 @@ const App: React.FC = () => {
     <div className="h-screen bg-zinc-950 text-gray-300 font-sans antialiased flex flex-col">
       <BrokerConnectModal />
       <Navbar />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0">
         <Watchlist activeSection={activeSection} setActiveSection={setActiveSection} />
         <main className="flex-1 p-2 overflow-y-auto bg-zinc-950">
           {renderSectionContent()}

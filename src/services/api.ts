@@ -28,11 +28,16 @@ interface MarketStatus {
     status: MarketStatusValue;
 }
 
+interface MarketSentiment {
+    score: number;
+}
+
 interface WebSocketCallbacks {
     onSignal: (signal: Signal) => void;
     onTick: (tick: MarketTick) => void;
     onBrokerStatus: (status: BrokerStatus) => void;
     onMarketStatus: (status: MarketStatus) => void;
+    onSentiment: (sentiment: MarketSentiment) => void;
 }
 
 export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
@@ -58,6 +63,8 @@ export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
                 callbacks.onBrokerStatus(message.payload);
             } else if (message.type === 'market_status_update' && message.payload) {
                 callbacks.onMarketStatus(message.payload);
+            } else if (message.type === 'market_sentiment_update' && message.payload) {
+                callbacks.onSentiment(message.payload);
             }
         } catch (error) {
             console.error('Error parsing WebSocket message:', error);
@@ -82,7 +89,7 @@ export const stopLiveSignalStream = () => {
     }
 };
 
-export const runBacktest = async (config: { period: string; timeframe: string, from: number, to: number }): Promise<BacktestResults> => {
+export const runBacktest = async (config: { period: string; timeframe: string, from: number, to: number, metricsOnly?: boolean }): Promise<BacktestResults> => {
     console.log('Running backtest with config:', config);
     const response = await fetch(`${API_BASE_URL}/backtest`, {
         method: 'POST',
@@ -136,13 +143,14 @@ export const connectToBroker = async (apiKey: string, accessToken: string): Prom
     return data;
 };
 
-export const runSignalAnalysis = async (): Promise<SignalPerformance> => {
-    console.log('Requesting signal performance analysis...');
+export const runSignalAnalysis = async (config?: { sl: number, tp: number }): Promise<SignalPerformance> => {
+    console.log('Requesting signal performance analysis with config:', config);
     const response = await fetch(`${API_BASE_URL}/ml/analyze-signals`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
+        body: JSON.stringify(config),
     });
 
     const data = await response.json();
