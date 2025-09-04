@@ -2,6 +2,9 @@ export enum SignalDirection {
   BUY = 'BUY',
   SELL = 'SELL',
   NEUTRAL = 'NEUTRAL',
+  STRONG_BUY = 'STRONG_BUY',
+  STRONG_SELL = 'STRONG_SELL',
+  PRICE_CONSOLIDATION = 'PRICE_CONSOLIDATION',
 }
 
 export interface Signal {

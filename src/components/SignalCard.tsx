@@ -7,10 +7,47 @@ interface SignalCardProps {
   onClick?: (signal: Signal) => void;
 }
 
+const signalConfig = {
+  [SignalDirection.STRONG_BUY]: {
+    label: 'STRONG BUY',
+    borderColor: 'border-green-400',
+    textColor: 'text-green-300',
+    icon: <i className="fa-solid fa-bolt text-green-300"></i>
+  },
+  [SignalDirection.BUY]: {
+    label: 'BUY',
+    borderColor: 'border-green-600',
+    textColor: 'text-green-400',
+    icon: <i className="fa-solid fa-arrow-up text-green-400"></i>
+  },
+  [SignalDirection.STRONG_SELL]: {
+    label: 'STRONG SELL',
+    borderColor: 'border-red-400',
+    textColor: 'text-red-300',
+    icon: <i className="fa-solid fa-bolt text-red-300"></i>
+  },
+  [SignalDirection.SELL]: {
+    label: 'SELL',
+    borderColor: 'border-red-600',
+    textColor: 'text-red-400',
+    icon: <i className="fa-solid fa-arrow-down text-red-400"></i>
+  },
+  [SignalDirection.PRICE_CONSOLIDATION]: {
+    label: 'CONSOLIDATION',
+    borderColor: 'border-yellow-600',
+    textColor: 'text-yellow-400',
+    icon: <i className="fa-solid fa-compress text-yellow-400"></i>
+  },
+  [SignalDirection.NEUTRAL]: {
+    label: 'NEUTRAL',
+    borderColor: 'border-zinc-600',
+    textColor: 'text-zinc-400',
+    icon: <i className="fa-solid fa-minus text-zinc-400"></i>
+  },
+};
+
 const SignalCard: React.FC<SignalCardProps> = ({ signal, onClick }) => {
-  const isBuy = signal.direction === SignalDirection.BUY;
-  const cardColor = isBuy ? 'border-green-500/80' : 'border-red-500/80';
-  const directionColor = isBuy ? 'text-green-400' : 'text-red-400';
+  const config = signalConfig[signal.direction] || signalConfig[SignalDirection.NEUTRAL];
   
   const time = new Date(signal.time).toLocaleTimeString('en-IN', {
     hour: '2-digit',
@@ -25,9 +62,11 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, onClick }) => {
     }
   };
 
+  const isInfoSignal = signal.direction === SignalDirection.PRICE_CONSOLIDATION;
+
   return (
     <div 
-        className={`w-full bg-zinc-900 border-l-4 ${cardColor} p-1 transition-colors ${onClick ? 'cursor-pointer hover:bg-zinc-800' : ''}`}
+        className={`w-full bg-zinc-900 border-l-4 ${config.borderColor} p-1 transition-colors ${onClick ? 'cursor-pointer hover:bg-zinc-800' : ''}`}
         onClick={handleCardClick}
     >
       <div className="flex justify-between items-start">
@@ -38,11 +77,16 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, onClick }) => {
           </div>
           <div className="text-[10px] text-zinc-400">{time}</div>
         </div>
-        <div className={`text-sm font-bold ${directionColor}`}>{signal.direction} @ {signal.price}</div>
+        <div className={`text-sm font-bold ${config.textColor} flex items-center gap-1.5`}>
+            {config.icon}
+            <span>{config.label} {!isInfoSignal && `@ ${signal.price}`}</span>
+        </div>
       </div>
-       <div className="text-xs font-medium text-zinc-300 mt-0.5">
-        Conviction: <span className="font-bold text-white">{signal.conviction}%</span>
-      </div>
+      {!isInfoSignal && (
+         <div className="text-xs font-medium text-zinc-300 mt-0.5">
+            Conviction: <span className="font-bold text-white">{signal.conviction}%</span>
+        </div>
+      )}
     </div>
   );
 };
