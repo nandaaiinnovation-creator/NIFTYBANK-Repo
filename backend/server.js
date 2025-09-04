@@ -1,9 +1,9 @@
-require('dotenv').config(); // Load environment variables from .env file
+require('dotenv').config(); 
 const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const cors = require('cors');
-const { Pool } = require('pg'); // Database client
+const { Pool } = require('pg'); 
 const PriceActionEngine = require('./PriceActionEngine');
 
 // --- DATABASE SETUP ---
@@ -109,11 +109,11 @@ app.post('/api/broker/connect', async (req, res) => {
 
 
 app.post('/api/backtest', async (req, res) => {
-    const { period, timeframe, from, to } = req.body;
-    console.log(`Received backtest request with params:`, { period, timeframe, from, to });
+    const { period, timeframe, from, to, sl, tp, instrument, tradeExitStrategy } = req.body;
+    console.log(`Received backtest request for instrument: ${instrument || 'default'} with params:`, { period, timeframe, from, to, sl, tp, tradeExitStrategy });
     
     try {
-        const results = await engine.runHistoricalAnalysis({ period, timeframe, from, to });
+        const results = await engine.runHistoricalAnalysis(req.body);
         res.status(200).json(results);
     } catch (error) {
         console.error("Backtest failed on server:", error.message);
@@ -155,6 +155,26 @@ app.post('/api/ml/analyze-signals', async (req, res) => {
     } catch (error) {
         console.error("Signal performance analysis failed on server:", error);
         res.status(500).json({ status: 'error', message: error.message || 'An error occurred during signal analysis.' });
+    }
+});
+
+app.post('/api/ml/suggest-strategy', async (req, res) => {
+    const { results: backtestResults, apiKey } = req.body;
+    
+    if (!apiKey) {
+      return res.status(400).json({ status: 'error', message: 'A Gemini API Key is required for this feature.' });
+    }
+    if (!backtestResults) {
+      return res.status(400).json({ status: 'error', message: 'Backtest results are required.' });
+    }
+
+    console.log('Received request for AI strategy suggestions.');
+    try {
+        const suggestions = await engine.getAIStrategySuggestions(backtestResults, apiKey);
+        res.status(200).json({ suggestions });
+    } catch (error) {
+        console.error("AI suggestion generation failed:", error.message);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to get suggestions from AI.' });
     }
 });
 

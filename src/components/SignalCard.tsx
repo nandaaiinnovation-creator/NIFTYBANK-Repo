@@ -4,9 +4,10 @@ import { SignalDirection } from '../types';
 
 interface SignalCardProps {
   signal: Signal;
+  onClick?: (signal: Signal) => void;
 }
 
-const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
+const SignalCard: React.FC<SignalCardProps> = ({ signal, onClick }) => {
   const isBuy = signal.direction === SignalDirection.BUY;
   const cardColor = isBuy ? 'border-green-500/80' : 'border-red-500/80';
   const directionColor = isBuy ? 'text-green-400' : 'text-red-400';
@@ -18,8 +19,17 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
     timeZone: 'Asia/Kolkata'
   });
 
+  const handleCardClick = () => {
+    if (onClick) {
+      onClick(signal);
+    }
+  };
+
   return (
-    <div className={`w-full bg-zinc-900 border-l-4 ${cardColor} p-1`}>
+    <div 
+        className={`w-full bg-zinc-900 border-l-4 ${cardColor} p-1 transition-colors ${onClick ? 'cursor-pointer hover:bg-zinc-800' : ''}`}
+        onClick={handleCardClick}
+    >
       <div className="flex justify-between items-start">
         <div>
           <div className="flex items-center gap-1.5">

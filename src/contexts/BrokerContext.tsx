@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect, useRef } from 'react';
 import { connectToBroker as apiConnectToBroker, startLiveSignalStream, stopLiveSignalStream } from '../services/api';
-import type { Signal } from '../types';
+import type { Signal, MarketVitals } from '../types';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting';
 type MarketStatus = 'OPEN' | 'CLOSED';
@@ -21,6 +21,7 @@ interface BrokerContextType {
     signals5m: Signal[];
     signals15m: Signal[];
     sentiment: number;
+    marketVitals: MarketVitals | null;
     isChartLive: boolean;
     isSignalFeedActive: boolean;
     isModalOpen: boolean;
@@ -47,6 +48,7 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [signals5m, setSignals5m] = useState<Signal[]>([]);
     const [signals15m, setSignals15m] = useState<Signal[]>([]);
     const [sentiment, setSentiment] = useState(50); // Default to Neutral (50)
+    const [marketVitals, setMarketVitals] = useState<MarketVitals | null>(null);
     
     // Granular streaming controls
     const [isChartLive, setIsChartLive] = useState(false);
@@ -144,12 +146,17 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 setSentiment(sentimentPayload.score);
             };
 
+            const handleVitals = (vitals: MarketVitals) => {
+                setMarketVitals(vitals);
+            };
+
             startLiveSignalStream({ 
                 onSignal: handleSignal, 
                 onTick: handleTick,
                 onBrokerStatus: handleBrokerStatus,
                 onMarketStatus: handleMarketStatus,
                 onSentiment: handleSentiment,
+                onVitals: handleVitals,
             });
 
             // Start batch processing timer
@@ -177,6 +184,7 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         status, message, marketStatus, apiKey, accessToken, lastTick,
         signals3m, signals5m, signals15m,
         sentiment,
+        marketVitals,
         isChartLive, isSignalFeedActive,
         isModalOpen,
         setApiKey, setAccessToken,

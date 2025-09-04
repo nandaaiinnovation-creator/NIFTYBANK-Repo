@@ -10,26 +10,11 @@ interface TradingViewChartProps {
   isLive: boolean;
   initialData?: BacktestCandle[];
   signals?: (Signal | BacktestSignal)[];
-  backtestConfig?: { period: string; timeframe: string };
+  backtestConfig?: { period: string; timeframe: string, instrument: string };
+  onSignalClick?: (signal: BacktestSignal) => void;
 }
 
-// A helper to convert a period string like "1 month" to a from/to date range
-const getBacktestDateRange = (period: string) => {
-    const toDate = new Date();
-    const fromDate = new Date();
-    const [value, unit] = period.split(' ');
-    const numValue = parseInt(value, 10);
-
-    if (unit.startsWith('month')) {
-        fromDate.setMonth(toDate.getMonth() - numValue);
-    } else if (unit.startsWith('year')) {
-        fromDate.setFullYear(toDate.getFullYear() - numValue);
-    }
-    // Return UNIX timestamps in seconds
-    return { from: Math.floor(fromDate.getTime() / 1000), to: Math.floor(toDate.getTime() / 1000) };
-};
-
-const datafeed = (isLive: boolean, lastTickRef: React.MutableRefObject<any>, backtestConfig?: { period: string; timeframe: string }) => ({
+const datafeed = (isLive: boolean, lastTickRef: React.MutableRefObject<any>, initialData?: BacktestCandle[], backtestConfig?: { period: string; timeframe: string, instrument: string }) => ({
     onReady: (callback: Function) => {
         console.log('[Datafeed] onReady called');
         setTimeout(() => callback({ supported_resolutions: ['1', '3', '5', '15'] }), 0);
@@ -38,9 +23,9 @@ const datafeed = (isLive: boolean, lastTickRef: React.MutableRefObject<any>, bac
     resolveSymbol: (symbolName: string, onSymbolResolvedCallback: Function) => {
         console.log('[Datafeed] resolveSymbol called:', symbolName);
         const symbolInfo = {
-            name: 'BANKNIFTY',
-            ticker: 'BANKNIFTY',
-            description: 'NIFTY BANK',
+            name: backtestConfig?.instrument || 'BANKNIFTY',
+            ticker: backtestConfig?.instrument || 'BANKNIFTY',
+            description: backtestConfig?.instrument || 'NIFTY BANK',
             session: '0915-1530',
             timezone: 'Asia/Kolkata',
             minmov: 1,
@@ -58,24 +43,33 @@ const datafeed = (isLive: boolean, lastTickRef: React.MutableRefObject<any>, bac
         onHistoryCallback: Function,
         onErrorCallback: Function
     ) => {
-        let { from, to } = periodParams;
+        if (!isLive && periodParams.firstDataRequest && initialData && initialData.length > 0) {
+            console.log('[Datafeed] Using pre-fetched initialData.');
+            const bars = initialData.map(c => ({
+                time: new Date(c.date).getTime(),
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+            }));
+            onHistoryCallback(bars, { noData: false });
+            return;
+        }
+
+        const { from, to } = periodParams;
         const timeframe = `${resolution}m`;
         console.log(`[Datafeed] getBars called for ${timeframe} from ${new Date(from * 1000)} to ${new Date(to * 1000)}`);
         
-        // If in backtest mode, the initial request should use the backtest period
-        if (!isLive && backtestConfig && periodParams.firstDataRequest) {
-            console.log(`[Datafeed] Overriding with backtest period: ${backtestConfig.period}`);
-            const range = getBacktestDateRange(backtestConfig.period);
-            from = range.from;
-            to = range.to;
-        }
-
         try {
+            // FIX: Added 'tradeExitStrategy' to satisfy the runBacktest function's type signature.
+            // Since this call is only for fetching candle data, a default value is sufficient.
             const results = await runBacktest({ 
+                instrument: backtestConfig?.instrument,
                 period: '', 
                 timeframe: timeframe, 
                 from, 
-                to 
+                to,
+                tradeExitStrategy: 'stop',
             });
             const bars = (results.candles || []).map(c => ({
                 time: new Date(c.date).getTime(),
@@ -107,7 +101,7 @@ const datafeed = (isLive: boolean, lastTickRef: React.MutableRefObject<any>, bac
     },
 });
 
-const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, signals = [], backtestConfig }) => {
+const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData, signals = [], backtestConfig, onSignalClick }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<any>(null);
     const { lastTick } = useBroker();
@@ -151,8 +145,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, signals = [
         }
 
         const widgetOptions = {
-            symbol: 'BANKNIFTY',
-            datafeed: datafeed(isLive, lastTickRef, backtestConfig),
+            symbol: backtestConfig?.instrument || 'BANKNIFTY',
+            datafeed: datafeed(isLive, lastTickRef, initialData, backtestConfig),
             interval: backtestConfig?.timeframe.replace('m', '') || '3',
             container: chartContainerRef.current,
             library_path: '/charting_library/',
@@ -182,6 +176,31 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, signals = [
              if (signals.length > 0) {
                 drawSignalsOnChart(signals);
             }
+
+            if (onSignalClick) {
+                const chart = tvWidget.chart();
+                chart.subscribeClick((params: { time?: number }) => {
+                    if (!params.time || !signals) return;
+
+                    const resolutionInSeconds = parseInt(backtestConfig?.timeframe.replace('m', '') || '1', 10) * 60;
+                    let clickedSignal: BacktestSignal | null = null;
+                    let minTimeDiff = Infinity;
+
+                    (signals as BacktestSignal[]).forEach(signal => {
+                        const signalTime = new Date(signal.time).getTime() / 1000;
+                        const timeDiff = Math.abs(params.time! - signalTime);
+
+                        if (timeDiff < resolutionInSeconds && timeDiff < minTimeDiff) {
+                            minTimeDiff = timeDiff;
+                            clickedSignal = signal;
+                        }
+                    });
+
+                    if (clickedSignal) {
+                        onSignalClick(clickedSignal);
+                    }
+                });
+            }
         });
 
         return () => {
@@ -190,14 +209,14 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, signals = [
                 chartRef.current = null;
             }
         };
-    }, [libraryStatus, isLive, backtestConfig]);
+    }, [libraryStatus, isLive, backtestConfig, initialData, signals, onSignalClick]);
 
 
     const drawSignalsOnChart = (signalsToDraw: (Signal | BacktestSignal)[]) => {
         if (!chartRef.current || !chartRef.current.chart) return;
         
         const chart = chartRef.current.chart();
-        chart.removeAllShapes(); // Clear previous signals
+        chart.removeAllShapes();
 
         signalsToDraw.forEach(signal => {
             const timeInSeconds = new Date(signal.time).getTime() / 1000;

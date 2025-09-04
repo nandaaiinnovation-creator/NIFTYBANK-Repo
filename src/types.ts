@@ -45,16 +45,10 @@ export interface BacktestSignal extends Signal {
     candleIndex: number;
 }
 
-export interface BacktestResults {
-    period: string;
-    timeframe: string;
-    candles?: BacktestCandle[];
-    signals: BacktestSignal[];
-    dataSourceMessage?: string;
-    winRate: string;
-    profitFactor: string;
-    totalTrades: number;
-    maxDrawdown: string;
+export interface EquityPoint {
+    tradeNumber: number;
+    equity: number;
+    date: string;
 }
 
 export interface RulePerformance {
@@ -62,6 +56,29 @@ export interface RulePerformance {
     wins: number;
     losses: number;
     winRate: string;
+    total: number;
+}
+
+export interface BacktestResults {
+    period: string;
+    instrument: string;
+    timeframe: string;
+    tradeExitStrategy: 'stop' | 'signal';
+    candles?: BacktestCandle[];
+    signals: BacktestSignal[];
+    dataSourceMessage?: string;
+    // Metrics
+    winRate: string;
+    profitFactor: string;
+    totalTrades: number;
+    maxDrawdown: string;
+    netProfit: number;
+    totalWins: number;
+    totalLosses: number;
+    avgWin: number;
+    avgLoss: number;
+    equityCurve: EquityPoint[];
+    rulePerformance: RulePerformance[];
 }
 
 export interface SignalPerformance {
@@ -70,4 +87,15 @@ export interface SignalPerformance {
     losses: number;
     winRate: string;
     rulePerformance: RulePerformance[];
+}
+
+export interface AISuggestion {
+    suggestions: string;
+}
+
+export interface MarketVitals {
+  open: number;
+  high: number;
+  low: number;
+  vix: number;
 }

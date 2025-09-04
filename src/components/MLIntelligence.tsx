@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SignalCard from './SignalCard';
-import { SignalDirection } from '../types';
-import type { SignalPerformance } from '../types';
-import { runSignalAnalysis } from '../services/api';
+import { SignalDirection, type SignalPerformance, type BacktestResults } from '../types';
+import { runSignalAnalysis, getAIStrategySuggestions } from '../services/api';
 
 const originalSignal = {
   time: new Date().toISOString(),
@@ -128,7 +127,7 @@ const PerformanceAnalysisContent: React.FC = () => {
 
             {isLoading && (
                  <div className="flex flex-col items-center justify-center h-48 text-zinc-500">
-                    <i className="fas fa-chart-line text-3xl mb-3 animate-pulse"></i>
+                    <i className="fas fa-chart-pie text-3xl mb-3 animate-pulse"></i>
                     <p className="text-sm">Processing Recent Signals...</p>
                  </div>
             )}
@@ -177,12 +176,110 @@ const PerformanceAnalysisContent: React.FC = () => {
     );
 };
 
+const StrategyOptimizerContent: React.FC = () => {
+    const [isLoading, setIsLoading] = useState(false);
+    const [results, setResults] = useState<BacktestResults | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [suggestions, setSuggestions] = useState<string | null>(null);
+    const [apiKey, setApiKey] = useState(() => localStorage.getItem('geminiApiKey') || '');
+
+    useEffect(() => {
+        localStorage.setItem('geminiApiKey', apiKey);
+    }, [apiKey]);
+
+
+    const loadLatestResults = () => {
+        setError(null);
+        setSuggestions(null);
+        const latest = sessionStorage.getItem('latestBacktestResults');
+        if (latest) {
+            setResults(JSON.parse(latest));
+        } else {
+            setError("No backtest results found. Please run a backtest first.");
+        }
+    };
+
+    const handleAnalyze = async () => {
+        if (!results || !apiKey) {
+             setError("Please provide a Gemini API key to run the analysis.");
+            return;
+        };
+        setIsLoading(true);
+        setError(null);
+        setSuggestions(null);
+        try {
+            const aiResponse = await getAIStrategySuggestions(results, apiKey);
+            setSuggestions(aiResponse.suggestions);
+        } catch (err: any) {
+            setError(err.message || "Failed to get suggestions from AI.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+         <div className="bg-zinc-950 border border-zinc-800 p-3 h-full flex flex-col">
+            <p className="text-zinc-400 mb-2 leading-relaxed text-center max-w-3xl mx-auto text-xs flex-shrink-0">
+                This tool uses the Gemini API as a feedback loop. Load your latest backtest results, provide your API key, and the AI will provide actionable suggestions for improving your strategy.
+            </p>
+             <div className="flex-shrink-0 bg-zinc-900 p-2 border border-zinc-800 mb-2 space-y-2">
+                 <div>
+                    <label htmlFor="gemini-key" className="block text-xs font-medium text-gray-400 mb-1">Gemini API Key</label>
+                     <input
+                        type="password"
+                        id="gemini-key"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="Enter your Gemini API Key"
+                        className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none rounded-sm"
+                    />
+                </div>
+                <div className="flex flex-col md:flex-row items-center justify-center gap-3">
+                    <button onClick={loadLatestResults} className="w-full md:w-auto bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-1.5 px-4 text-xs rounded-sm">
+                        <i className="fa-solid fa-download mr-2"></i>Load Last Backtest Results
+                    </button>
+                    <button onClick={handleAnalyze} disabled={!results || isLoading || !apiKey} className="w-full md:w-auto bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-600 disabled:cursor-not-allowed text-white font-bold py-1.5 px-4 text-xs rounded-sm flex items-center gap-2">
+                        {isLoading ? <><i className="fas fa-spinner fa-spin"></i> Analyzing...</> : <><i className="fa-solid fa-wand-magic-sparkles"></i> Analyze with AI</>}
+                    </button>
+                </div>
+            </div>
+            <div className="flex-grow overflow-y-auto">
+                {error && <div className="text-center text-red-400 bg-red-900/20 border border-red-500 p-2 text-xs">{error}</div>}
+                
+                {!results && !error && <div className="text-center text-zinc-500 text-sm p-4">Please load backtest results to begin.</div>}
+
+                {results && (
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                         <div className="bg-zinc-900 p-2 border border-zinc-800 rounded-sm">
+                            <h4 className="font-semibold text-white text-sm mb-2 text-center">Loaded Backtest Summary</h4>
+                            <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                                <div className="bg-zinc-800 p-1"><span className="text-zinc-400 block">Instrument</span><span className="font-bold">{results.instrument}</span></div>
+                                <div className="bg-zinc-800 p-1"><span className="text-zinc-400 block">Timeframe</span><span className="font-bold">{results.timeframe}</span></div>
+                                <div className="bg-zinc-800 p-1"><span className="text-zinc-400 block">Win Rate</span><span className="font-bold text-cyan-400">{results.winRate}</span></div>
+                                <div className="bg-zinc-800 p-1"><span className="text-zinc-400 block">Total Trades</span><span className="font-bold">{results.totalTrades}</span></div>
+                                <div className="bg-zinc-800 p-1"><span className="text-zinc-400 block">Net Profit</span><span className={`font-bold ${results.netProfit > 0 ? 'text-green-400' : 'text-red-400'}`}>{results.netProfit.toFixed(2)}</span></div>
+                                <div className="bg-zinc-800 p-1"><span className="text-zinc-400 block">Exit Strategy</span><span className="font-bold capitalize">{results.tradeExitStrategy}</span></div>
+                            </div>
+                         </div>
+                         <div className="bg-zinc-900 p-2 border border-zinc-800 rounded-sm">
+                             <h4 className="font-semibold text-white text-sm mb-2 text-center">AI Strategy Suggestions</h4>
+                             {isLoading && <div className="text-center text-zinc-400"><i className="fas fa-spinner fa-spin mr-2"></i>Gemini is thinking...</div>}
+                             {suggestions && <div className="text-zinc-300 text-xs space-y-2" dangerouslySetInnerHTML={{ __html: suggestions.replace(/\n/g, '<br />') }}></div>}
+                             {!suggestions && !isLoading && <div className="text-center text-zinc-500 text-sm p-4">AI suggestions will appear here.</div>}
+                         </div>
+                     </div>
+                )}
+            </div>
+         </div>
+    );
+}
+
 const MLIntelligence: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'analysis' | 'smart' | 'predictive'>('analysis');
+    const [activeTab, setActiveTab] = useState<'optimizer' | 'analysis' | 'smart'>('optimizer');
     
-    const TabButton: React.FC<{ tabName: 'analysis' | 'smart' | 'predictive', children: React.ReactNode }> = ({ tabName, children }) => (
+    const TabButton: React.FC<{ tabName: 'optimizer' | 'analysis' | 'smart' | 'predictive', children: React.ReactNode }> = ({ tabName, children }) => (
         <button
-            onClick={() => setActiveTab(tabName)}
+            onClick={() => setActiveTab(tabName as any)}
             className={`px-2 py-1 font-medium text-xs border-b-2 transition-colors ${activeTab === tabName ? 'text-cyan-400 border-cyan-400' : 'text-zinc-400 border-transparent hover:text-white'}`}
         >
             {children}
@@ -197,15 +294,15 @@ const MLIntelligence: React.FC = () => {
             </div>
             <div className="border-b border-zinc-800 flex-shrink-0">
                 <nav className="-mb-px flex gap-2" aria-label="Tabs">
+                    <TabButton tabName="optimizer"><i className="fa-solid fa-wand-magic-sparkles mr-1.5"></i>Strategy Optimizer</TabButton>
                     <TabButton tabName="analysis"><i className="fas fa-chart-pie mr-1.5"></i>Performance Analysis</TabButton>
                     <TabButton tabName="smart"><i className="fas fa-lightbulb mr-1.5"></i>Smart Signals (Mockup)</TabButton>
-                    <TabButton tabName="predictive"><i className="fas fa-wand-magic-sparkles mr-1.5"></i>Predictive Forecasts (Mockup)</TabButton>
                 </nav>
             </div>
             <div className="mt-1 flex-grow overflow-y-auto">
+                {activeTab === 'optimizer' && <StrategyOptimizerContent />}
                 {activeTab === 'analysis' && <PerformanceAnalysisContent />}
                 {activeTab === 'smart' && <SmartSignalsContent />}
-                {activeTab === 'predictive' && <PredictiveForecastsContent />}
             </div>
         </div>
     );

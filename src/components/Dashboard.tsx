@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import SignalCard from './SignalCard';
 import { useBroker } from '../contexts/BrokerContext';
 import TradingViewChart from './TradingViewChart';
 import SentimentGauge from './SentimentGauge';
+import LiveSignalDetailModal from './LiveSignalDetailModal';
+import type { Signal } from '../types';
 
 const ToggleSwitch: React.FC<{ label: string; enabled: boolean; onToggle: () => void; disabled?: boolean }> = ({ label, enabled, onToggle, disabled }) => (
     <div className={`flex items-center gap-2 ${disabled ? 'opacity-50' : ''}`}>
@@ -16,6 +18,27 @@ const ToggleSwitch: React.FC<{ label: string; enabled: boolean; onToggle: () => 
         </label>
     </div>
 );
+
+const MarketVitalsPanel: React.FC = () => {
+    const { marketVitals } = useBroker();
+    const Vital: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
+        <div className="flex justify-between items-baseline text-xs">
+            <span className="text-zinc-400">{label}</span>
+            <span className="font-mono font-semibold text-white">{value}</span>
+        </div>
+    );
+    return (
+        <div className="bg-zinc-950 border border-zinc-800 p-2">
+            <h3 className="text-xs font-semibold text-white mb-2">Market Vitals</h3>
+            <div className="space-y-1.5">
+                <Vital label="Open" value={marketVitals?.open.toFixed(2) || '...'} />
+                <Vital label="High" value={marketVitals?.high.toFixed(2) || '...'} />
+                <Vital label="Low" value={marketVitals?.low.toFixed(2) || '...'} />
+                <Vital label="India VIX" value={marketVitals?.vix.toFixed(2) || '...'} />
+            </div>
+        </div>
+    );
+};
 
 
 const Dashboard: React.FC = () => {
@@ -31,6 +54,8 @@ const Dashboard: React.FC = () => {
     toggleChartLive,
     toggleSignalFeedActive,
   } = useBroker();
+  
+  const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
 
   const allSignals = [...signals3m, ...signals5m, ...signals15m];
 
@@ -42,6 +67,8 @@ const Dashboard: React.FC = () => {
   
   return (
     <div className="bg-zinc-900 border border-zinc-700 flex flex-col p-2 gap-2">
+        {selectedSignal && <LiveSignalDetailModal signal={selectedSignal} onClose={() => setSelectedSignal(null)} />}
+        
         {/* Header */}
         <div className="flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-4">
@@ -82,15 +109,18 @@ const Dashboard: React.FC = () => {
                      <div className="bg-zinc-950 border border-zinc-800 p-2">
                         <h3 className="text-xs font-semibold text-white mb-1">Latest Active Signals</h3>
                          <div className="flex flex-col gap-1">
-                            {signals3m.length > 0 ? <SignalCard signal={signals3m[0]} /> : <div className="p-1 text-xs text-zinc-600 text-center">No 3m signal</div>}
-                            {signals5m.length > 0 ? <SignalCard signal={signals5m[0]} /> : <div className="p-1 text-xs text-zinc-600 text-center">No 5m signal</div>}
-                            {signals15m.length > 0 ? <SignalCard signal={signals15m[0]} /> : <div className="p-1 text-xs text-zinc-600 text-center">No 15m signal</div>}
+                            {signals3m.length > 0 ? <SignalCard signal={signals3m[0]} onClick={setSelectedSignal} /> : <div className="p-1 text-xs text-zinc-600 text-center">No 3m signal</div>}
+                            {signals5m.length > 0 ? <SignalCard signal={signals5m[0]} onClick={setSelectedSignal} /> : <div className="p-1 text-xs text-zinc-600 text-center">No 5m signal</div>}
+                            {signals15m.length > 0 ? <SignalCard signal={signals15m[0]} onClick={setSelectedSignal} /> : <div className="p-1 text-xs text-zinc-600 text-center">No 15m signal</div>}
                         </div>
                     </div>
-                    <div className="bg-zinc-950 border border-zinc-800 p-2">
-                        <h3 className="text-xs font-semibold text-white mb-1">Market Sentiment</h3>
-                        <div className="h-full min-h-[70px]">
-                            <SentimentGauge sentiment={sentiment} />
+                    <div className="flex flex-col gap-2">
+                        <MarketVitalsPanel />
+                        <div className="bg-zinc-950 border border-zinc-800 p-2">
+                            <h3 className="text-xs font-semibold text-white mb-1">Market Sentiment</h3>
+                            <div className="h-full min-h-[70px]">
+                                <SentimentGauge sentiment={sentiment} />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -103,21 +133,21 @@ const Dashboard: React.FC = () => {
                         <div className="bg-zinc-900 p-1 flex flex-col flex-1 min-h-0">
                             <h4 className="text-center text-[10px] font-bold text-cyan-400 border-b border-zinc-800 pb-1 flex-shrink-0">3 MINUTE</h4>
                             <div className="overflow-y-auto pr-1 space-y-1 flex-grow pt-1">
-                                {signals3m.length > 0 ? signals3m.map((s, i) => <div key={`${s.time}-3m-${i}`} className={i === 0 ? 'animate-fade-in' : ''}><SignalCard signal={s} /></div>) : <EmptyState timeframe="3m" />}
+                                {signals3m.length > 0 ? signals3m.map((s, i) => <SignalCard key={`${s.time}-3m-${i}`} signal={s} onClick={setSelectedSignal} />) : <EmptyState timeframe="3m" />}
                             </div>
                         </div>
                         {/* 5 Minute Log */}
                         <div className="bg-zinc-900 p-1 flex flex-col flex-1 min-h-0">
                             <h4 className="text-center text-[10px] font-bold text-cyan-400 border-b border-zinc-800 pb-1 flex-shrink-0">5 MINUTE</h4>
                             <div className="overflow-y-auto pr-1 space-y-1 flex-grow pt-1">
-                                {signals5m.length > 0 ? signals5m.map((s, i) => <div key={`${s.time}-5m-${i}`} className={i === 0 ? 'animate-fade-in' : ''}><SignalCard signal={s} /></div>) : <EmptyState timeframe="5m" />}
+                                {signals5m.length > 0 ? signals5m.map((s, i) => <SignalCard key={`${s.time}-5m-${i}`} signal={s} onClick={setSelectedSignal} />) : <EmptyState timeframe="5m" />}
                             </div>
                         </div>
                         {/* 15 Minute Log */}
                         <div className="bg-zinc-900 p-1 flex flex-col flex-1 min-h-0">
                             <h4 className="text-center text-[10px] font-bold text-cyan-400 border-b border-zinc-800 pb-1 flex-shrink-0">15 MINUTE</h4>
                             <div className="overflow-y-auto pr-1 space-y-1 flex-grow pt-1">
-                                {signals15m.length > 0 ? signals15m.map((s, i) => <div key={`${s.time}-15m-${i}`} className={i === 0 ? 'animate-fade-in' : ''}><SignalCard signal={s} /></div>) : <EmptyState timeframe="15m" />}
+                                {signals15m.length > 0 ? signals15m.map((s, i) => <SignalCard key={`${s.time}-15m-${i}`} signal={s} onClick={setSelectedSignal} />) : <EmptyState timeframe="15m" />}
                             </div>
                         </div>
                     </div>

@@ -1,4 +1,4 @@
-import type { Signal, BacktestResults, SignalPerformance } from '../types';
+import type { Signal, BacktestResults, SignalPerformance, AISuggestion, MarketVitals } from '../types';
 // FIX: The import for `CustomizableRule` was removed because the source file is not a module.
 // A local definition is provided to resolve the type error.
 export interface CustomizableRule {
@@ -38,6 +38,7 @@ interface WebSocketCallbacks {
     onBrokerStatus: (status: BrokerStatus) => void;
     onMarketStatus: (status: MarketStatus) => void;
     onSentiment: (sentiment: MarketSentiment) => void;
+    onVitals: (vitals: MarketVitals) => void;
 }
 
 export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
@@ -65,6 +66,8 @@ export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
                 callbacks.onMarketStatus(message.payload);
             } else if (message.type === 'market_sentiment_update' && message.payload) {
                 callbacks.onSentiment(message.payload);
+            } else if (message.type === 'market_vitals_update' && message.payload) {
+                callbacks.onVitals(message.payload);
             }
         } catch (error) {
             console.error('Error parsing WebSocket message:', error);
@@ -89,7 +92,16 @@ export const stopLiveSignalStream = () => {
     }
 };
 
-export const runBacktest = async (config: { period: string; timeframe: string, from: number, to: number, metricsOnly?: boolean }): Promise<BacktestResults> => {
+export const runBacktest = async (config: { 
+    period: string; 
+    timeframe: string; 
+    from: number; 
+    to: number; 
+    sl?: number; 
+    tp?: number;
+    instrument?: string;
+    tradeExitStrategy: 'stop' | 'signal';
+}): Promise<BacktestResults> => {
     console.log('Running backtest with config:', config);
     const response = await fetch(`${API_BASE_URL}/backtest`, {
         method: 'POST',
@@ -158,5 +170,20 @@ export const runSignalAnalysis = async (config?: { sl: number, tp: number }): Pr
         throw new Error(data.message || 'Signal analysis failed');
     }
 
+    return data;
+};
+
+export const getAIStrategySuggestions = async (results: BacktestResults, apiKey: string): Promise<AISuggestion> => {
+    console.log('Requesting AI strategy suggestions...');
+    const response = await fetch(`${API_BASE_URL}/ml/suggest-strategy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ results, apiKey }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || 'Failed to get AI suggestions.');
+    }
     return data;
 };
