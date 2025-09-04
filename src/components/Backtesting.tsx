@@ -200,48 +200,51 @@ const Backtesting: React.FC = () => {
                 <h2 className="text-md font-semibold text-white">Backtesting Engine</h2>
             </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 flex-grow overflow-hidden">
-                <div className="lg:col-span-1 bg-zinc-950 p-2 border border-zinc-800 flex flex-col overflow-y-auto">
-                    {/* --- CONFIGURATION PANEL --- */}
-                     <h3 className="font-semibold text-white mb-2 text-sm">Configuration</h3>
-                    <div className="space-y-3">
+            <div className="flex flex-col lg:flex-row gap-2 flex-grow overflow-hidden">
+                {/* --- CONFIGURATION PANEL --- */}
+                <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 bg-zinc-950 p-3 border border-zinc-800 flex flex-col">
+                     <h3 className="font-semibold text-white mb-4 text-sm flex-shrink-0">Configuration</h3>
+                     <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                         {/* Instrument & Date Range */}
-                        <div>
-                            <label className="block text-xs font-medium text-gray-400 mb-1">Instrument</label>
-                            <select value={config.instrument} onChange={(e) => setConfig(prev => ({ ...prev, instrument: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
-                                {instruments.map(i => <option key={i} value={i}>{i}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-gray-400 mb-1">Historical Range</label>
-                            <select value={config.dateRangeType === 'custom' ? 'Custom Range' : config.period} onChange={(e) => setConfig(prev => ({ ...prev, dateRangeType: e.target.value === 'Custom Range' ? 'custom' : 'period', period: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
-                                {periods.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
-                        </div>
-                        {config.dateRangeType === 'custom' && (
-                            <div className="grid grid-cols-2 gap-3 animate-fade-in">
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-400 mb-1">From</label>
-                                    <input type="date" value={config.from} onChange={e => setConfig(prev => ({...prev, from: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-400 mb-1">To</label>
-                                    <input type="date" value={config.to} onChange={e => setConfig(prev => ({...prev, to: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
-                                </div>
+                        <div className="space-y-3">
+                            <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1 mb-2">Scope</h4>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1">Instrument</label>
+                                <select value={config.instrument} onChange={(e) => setConfig(prev => ({ ...prev, instrument: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
+                                    {instruments.map(i => <option key={i} value={i}>{i}</option>)}
+                                </select>
                             </div>
-                        )}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1">Historical Range</label>
+                                <select value={config.dateRangeType === 'custom' ? 'Custom Range' : config.period} onChange={(e) => setConfig(prev => ({ ...prev, dateRangeType: e.target.value === 'Custom Range' ? 'custom' : 'period', period: e.target.value }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
+                                    {periods.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </div>
+                            {config.dateRangeType === 'custom' && (
+                                <div className="grid grid-cols-2 gap-3 animate-fade-in">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">From</label>
+                                        <input type="date" value={config.from} onChange={e => setConfig(prev => ({...prev, from: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">To</label>
+                                        <input type="date" value={config.to} onChange={e => setConfig(prev => ({...prev, to: e.target.value}))} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm" />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         {/* Timeframe */}
-                         <div>
-                            <label className="block text-xs font-medium text-gray-400 mb-2">Timeframe</label>
+                         <div className="space-y-2">
+                             <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1 mb-2">Timeframe</h4>
                             <div className="flex items-center gap-2">
                                 {timeframes.map(tf => (<button key={tf} onClick={() => setConfig(prev => ({ ...prev, timeframe: tf }))} className={`px-2 py-1 text-xs rounded-sm ${config.timeframe === tf ? 'bg-cyan-500 text-white' : 'bg-zinc-700 hover:bg-zinc-600 text-gray-300'}`}>{tf}</button>))}
                             </div>
                         </div>
                         
                         {/* Advanced Strategy Config */}
-                        <div className="bg-zinc-900 border border-zinc-800 p-2 rounded-sm space-y-3">
-                            <h4 className="text-xs font-semibold text-cyan-400">Strategy & Risk</h4>
-                             {/* Backtest Mode */}
+                        <div className="space-y-3">
+                            <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1 mb-2">Strategy & Risk</h4>
                              <div>
                                 <label className="block text-xs font-medium text-gray-400 mb-1">Backtest Mode</label>
                                 <select value={config.mode} onChange={(e) => setConfig(prev => ({ ...prev, mode: e.target.value as any }))} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm">
@@ -263,7 +266,6 @@ const Backtesting: React.FC = () => {
                                 </div>
                             )}
 
-                             {/* Exit Strategy */}
                             <div className="flex items-center justify-between">
                                 <label className="text-xs font-medium text-gray-400">Exit Strategy</label>
                                 <div className="flex items-center gap-2">
@@ -272,7 +274,6 @@ const Backtesting: React.FC = () => {
                                 </div>
                             </div>
                             
-                            {/* SL/TP Config */}
                             <div className={`space-y-3 transition-opacity ${config.tradeExitStrategy === 'signal' ? 'opacity-50' : 'opacity-100'}`}>
                                 <div>
                                     <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss Type</label>
@@ -309,15 +310,15 @@ const Backtesting: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="mt-auto pt-3">
+                    <div className="mt-4 flex-shrink-0">
                          <button onClick={handleRunBacktest} disabled={isLoading} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 text-sm rounded-sm flex items-center justify-center gap-2">
                             {isLoading ? <><i className="fas fa-spinner fa-spin"></i> Running...</> : <><i className="fas fa-play"></i> Run Backtest</>}
                         </button>
                     </div>
                 </div>
 
-                <div className="lg:col-span-2 bg-zinc-950 p-2 border border-zinc-800 min-h-[400px] flex flex-col">
-                    {/* --- RESULTS PANEL --- */}
+                {/* --- RESULTS PANEL --- */}
+                <div className="flex-1 bg-zinc-950 p-2 border border-zinc-800 min-h-[400px] flex flex-col">
                     <h3 className="font-semibold text-white mb-2 text-sm flex-shrink-0">Backtest Results</h3>
                     {isLoading && <div className="flex flex-col items-center justify-center h-full text-zinc-500"><i className="fas fa-chart-line text-4xl mb-3 animate-pulse"></i><p className="text-md">Fetching & Analyzing Historical Data...</p>{config.mode === 'walk-forward' && <p className="text-sm mt-2">Walk-forward analysis may take several minutes.</p>}</div>}
                     {!isLoading && !results && <div className="flex flex-col items-center justify-center h-full text-zinc-600 text-center"><i className="fas fa-vial-circle-check text-4xl mb-3"></i><p className="text-md">Ready to run analysis</p><p className="text-xs mt-1">{error ? <span className="text-red-400">{error}</span> : 'Configure parameters and click "Run Backtest".'}</p></div>}
