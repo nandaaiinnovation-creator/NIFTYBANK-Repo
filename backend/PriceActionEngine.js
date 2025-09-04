@@ -1,3 +1,4 @@
+
 const { GoogleGenAI } = require("@google/genai");
 const { KiteConnect } = require("kiteconnect");
 const { KiteTicker } = require("kiteconnect");
@@ -7,7 +8,7 @@ const signalsLogPath = path.join(__dirname, 'data', 'signals.log');
 const ticksLogPath = path.join(__dirname, 'data', 'ticks.log');
 
 
-const ruleWeights = {
+const baseRuleWeights = {
     "HTF Alignment": 20,
     "Market Structure": 10,
     "Support & Resistance": 12,
@@ -61,6 +62,8 @@ class PriceActionEngine {
     this.marketVitals = { open: 0, high: 0, low: 0, vix: 0 };
     
     // --- ADVANCED ENHANCEMENTS STATE ---
+    this.baseRuleWeights = JSON.parse(JSON.stringify(baseRuleWeights));
+    this.dynamicRuleWeights = JSON.parse(JSON.stringify(baseRuleWeights));
     this.htfTrend = 'NEUTRAL';
     this.dailyRulePerformance = {};
     this.lastSignalForFeedback = {};
@@ -115,9 +118,10 @@ class PriceActionEngine {
   }
   
   _resetDailyStats() {
-    console.log('Resetting daily performance stats...');
+    console.log('Resetting daily performance stats and rule weights...');
+    this.dynamicRuleWeights = JSON.parse(JSON.stringify(this.baseRuleWeights));
     this.dailyRulePerformance = {};
-    Object.keys(ruleWeights).forEach(rule => {
+    Object.keys(this.baseRuleWeights).forEach(rule => {
         this.dailyRulePerformance[rule] = { wins: 0, losses: 0, net: 0 };
     });
     this.timeframes.forEach(tf => {
@@ -308,41 +312,55 @@ class PriceActionEngine {
     });
   }
 
+  _applyStrategicPlaybook(marketRegime) {
+      // Reset to base weights before applying playbook
+      this.dynamicRuleWeights = JSON.parse(JSON.stringify(this.baseRuleWeights));
+
+      if (marketRegime === 'Low') { // Trending Playbook
+          console.log("Applying: Low Volatility (Trending) Playbook");
+          this.dynamicRuleWeights["Market Structure"] *= 1.25;
+          this.dynamicRuleWeights["HTF Alignment"] *= 1.25;
+          this.dynamicRuleWeights["Consolidation Breakout"] *= 1.1;
+      } else if (marketRegime === 'High') { // Mean-Reversion Playbook
+          console.log("Applying: High Volatility (Mean-Reversion) Playbook");
+          this.dynamicRuleWeights["Support & Resistance"] *= 1.3;
+          this.dynamicRuleWeights["Options OI Levels"] *= 1.3;
+          this.dynamicRuleWeights["Momentum Divergence"] *= 1.2;
+          this.dynamicRuleWeights["Consolidation Breakout"] *= 0.7; // Reduce weight for breakouts
+          this.dynamicRuleWeights["Initial Balance Breakout"] *= 0.7;
+      }
+      // Medium volatility uses the default base weights
+  }
+
   _evaluateRules(candle, timeframe, history) {
       if (history.length < 20) return null;
 
       const bullishRulesPassed = [], bearishRulesPassed = [];
+      const allRules = Object.keys(this.baseRuleWeights);
       
-      const activeRules = Object.keys(ruleWeights).filter(rule => {
-          const stats = this.dailyRulePerformance[rule];
-          return !stats || stats.net > -3;
-      });
-      const allRulesFailed = new Set(activeRules);
-
-      this._calculateRSI(history, 14, timeframe);
-      this._calculateATR(history, 14, timeframe);
-
       const vix = this.marketVitals.vix;
       let marketRegime = 'Medium';
       if (vix < 15) marketRegime = 'Low';
       if (vix > 22) marketRegime = 'High';
+      
+      // Apply strategic playbook to adjust weights based on market regime
+      this._applyStrategicPlaybook(marketRegime);
+
+      this._calculateRSI(history, 14, timeframe);
+      this._calculateATR(history, 14, timeframe);
 
       const addRule = (direction, name) => {
-        if (activeRules.includes(name)) {
-            if (direction === 'bullish') bullishRulesPassed.push(name);
-            else if (direction === 'bearish') bearishRulesPassed.push(name);
-            allRulesFailed.delete(name);
-        }
+        if (direction === 'bullish') bullishRulesPassed.push(name);
+        else if (direction === 'bearish') bearishRulesPassed.push(name);
       };
-
-      // --- NEW & ENHANCED RULES ---
+      
+      // --- Evaluate all rules ---
       const componentDivergence = this._checkComponentDivergence(candle);
       if (componentDivergence) addRule(componentDivergence, "Component Divergence");
 
       const oiSignal = this._checkOptionsOiLevels(candle);
       if (oiSignal) addRule(oiSignal, "Options OI Levels");
 
-      // --- EXISTING RULES ---
       const htfAlignment = this._checkHTFAlignment(timeframe);
       if (htfAlignment) addRule(htfAlignment, "HTF Alignment");
       
@@ -379,21 +397,21 @@ class PriceActionEngine {
       if (divergence) addRule(divergence, "Momentum Divergence");
 
       // --- FINAL SIGNAL DECISION ---
-      if (marketRegime === 'High' && bullishRulesPassed.includes("Consolidation Breakout")) return null;
-      if (marketRegime === 'High' && bearishRulesPassed.includes("Consolidation Breakout")) return null;
-
       let consensusDirection = null;
       if (bullishRulesPassed.length > bearishRulesPassed.length + 1) consensusDirection = 'BUY';
-      else if (bearishRulesPassed.length > bullishRulesPassed.length + 1) consensusDirection = 'SELL';
+      else if (bearishRulesPassed.length > bearishRulesPassed.length + 1) consensusDirection = 'SELL';
       
       if (!consensusDirection) return null;
       if (Math.abs(candle.close - this.lastSignalPrice) < 75) return null;
 
       const rulesPassed = consensusDirection === 'BUY' ? bullishRulesPassed : bearishRulesPassed;
+      const rulesFailedSet = new Set(allRules);
+      rulesPassed.forEach(rule => rulesFailedSet.delete(rule));
+
       if (rulesPassed.length === 0) return null;
 
       let convictionScore = 50;
-      rulesPassed.forEach(rule => { convictionScore += ruleWeights[rule] || 5; });
+      rulesPassed.forEach(rule => { convictionScore += this.dynamicRuleWeights[rule] || 5; });
       convictionScore = Math.min(98, Math.floor(convictionScore));
       
       let finalDirection = consensusDirection;
@@ -404,8 +422,40 @@ class PriceActionEngine {
       return {
           time: candle.date || new Date().toISOString(), symbol: 'BANKNIFTY',
           price: parseFloat(candle.close.toFixed(2)), direction: finalDirection,
-          rulesPassed, rulesFailed: Array.from(allRulesFailed), conviction: convictionScore, timeframe,
+          rulesPassed, rulesFailed: Array.from(rulesFailedSet), conviction: convictionScore, timeframe,
       };
+  }
+  
+  _updateFeedbackLoop(newSignal) {
+    const timeframe = newSignal.timeframe;
+    const previousSignal = this.lastSignalForFeedback[timeframe];
+
+    if (previousSignal && !previousSignal.direction.includes('CONSOLIDATION')) {
+        const pnl = previousSignal.direction.includes('BUY') 
+            ? newSignal.price - previousSignal.price 
+            : previousSignal.price - newSignal.price;
+        
+        const outcome = pnl > 0 ? 'win' : 'loss';
+
+        if (outcome === 'win') {
+            previousSignal.rulesPassed.forEach(rule => {
+                this.dailyRulePerformance[rule].wins++;
+                this.dailyRulePerformance[rule].net++;
+                const newWeight = this.dynamicRuleWeights[rule] + 0.5; // Small increase for a win
+                this.dynamicRuleWeights[rule] = Math.min(newWeight, this.baseRuleWeights[rule] * 1.5); // Cap at 150% of base
+            });
+        } else { // Loss
+            previousSignal.rulesPassed.forEach(rule => {
+                this.dailyRulePerformance[rule].losses++;
+                this.dailyRulePerformance[rule].net--;
+                const newWeight = this.dynamicRuleWeights[rule] - 1.0; // Larger decrease for a loss
+                this.dynamicRuleWeights[rule] = Math.max(newWeight, this.baseRuleWeights[rule] * 0.5); // Floor at 50% of base
+            });
+        }
+        console.log(`[Feedback Loop ${timeframe}] ${previousSignal.direction} signal closed. PnL: ${pnl.toFixed(2)}. Outcome: ${outcome}. Updated rule weights.`);
+    }
+
+    this.lastSignalForFeedback[timeframe] = newSignal;
   }
 
   // --- RULE HELPERS (NEW & EXISTING) ---
@@ -520,9 +570,9 @@ class PriceActionEngine {
           
           walkForwardPeriods.push({
               trainStart: trainCandles[0].date.toISOString(),
-              trainEnd: trainCandles[trainCandles.length-1].date.toISOString(),
+              trainEnd: trainCandles[trainCandles.length-1].toISOString(),
               testStart: testCandles[0].date.toISOString(),
-              testEnd: testCandles[testCandles.length-1].date.toISOString(),
+              testEnd: testCandles[testCandles.length-1].toISOString(),
               bestSl: bestParams.sl,
               bestTp: bestParams.tp,
               testMetrics
@@ -694,7 +744,6 @@ PriceActionEngine.prototype._calculateRSI = function(history, period, timeframe)
 PriceActionEngine.prototype._setInitialBalance = function(tick) { /* Unchanged */ };
 PriceActionEngine.prototype._updateHTFTrend = function(history15m) { /* Unchanged */ };
 PriceActionEngine.prototype._checkHTFAlignment = function(timeframe) { /* Unchanged */ return null };
-PriceActionEngine.prototype._updateFeedbackLoop = function(newSignal) { /* Unchanged */ };
 PriceActionEngine.prototype._checkVolumeSpike = function(candle, history) { /* Unchanged */ return false };
 PriceActionEngine.prototype._checkMarketStructure = function(candle, history) { /* Unchanged */ return null };
 PriceActionEngine.prototype._checkSupportResistance = function(candle) { /* Unchanged */ return null };
