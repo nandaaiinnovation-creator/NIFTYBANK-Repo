@@ -575,6 +575,7 @@ class PriceActionEngine {
     const equityCurve = [{ tradeNumber: 0, equity, date: candles[0]?.date.toISOString() }];
     const ruleStats = {};
     let trades = [];
+    const detailedTrades = []; // For the new trade log
 
     const atrHistory = candles.map((_, i) => {
         if (i < 14) return 0;
@@ -640,6 +641,15 @@ class PriceActionEngine {
             ruleStats[rule][outcome === 'win' ? 'wins' : 'losses']++;
         });
         equityCurve.push({ tradeNumber: index + 1, equity, date: exitDate.toISOString() });
+
+        detailedTrades.push({
+            entryTime: signal.time,
+            exitTime: exitDate.toISOString(),
+            entryPrice,
+            exitPrice,
+            direction,
+            pnl: parseFloat(pnl.toFixed(2))
+        });
     });
 
     const netProfit = totalProfit - totalLoss;
@@ -650,7 +660,7 @@ class PriceActionEngine {
         return { rule, ...stats, total, winRate: total > 0 ? ((stats.wins / total) * 100).toFixed(1) + '%' : '0.0%'};
     }).sort((a, b) => b.total - a.total);
 
-    return { wins, losses, totalProfit, totalLoss, peakEquity, maxDrawdown, equityCurve, netProfit, avgWin, avgLoss, rulePerformance };
+    return { wins, losses, totalProfit, totalLoss, peakEquity, maxDrawdown, equityCurve, netProfit, avgWin, avgLoss, rulePerformance, trades: detailedTrades };
   }
 
   // --- OTHER METHODS ---

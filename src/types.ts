@@ -86,6 +86,14 @@ export interface WalkForwardPeriodResult {
     testMetrics: PerformanceMetrics;
 }
 
+export interface BacktestTrade {
+  entryTime: string;
+  exitTime: string;
+  entryPrice: number;
+  exitPrice: number;
+  direction: 'BUY' | 'SELL';
+  pnl: number;
+}
 
 export interface BacktestResults extends PerformanceMetrics {
     period: string;
@@ -95,6 +103,7 @@ export interface BacktestResults extends PerformanceMetrics {
     candles?: BacktestCandle[];
     signals: BacktestSignal[];
     dataSourceMessage?: string;
+    trades?: BacktestTrade[];
     // New optional fields for Walk-Forward mode
     mode?: 'simple' | 'walk-forward';
     walkForwardPeriods?: WalkForwardPeriodResult[];
