@@ -11,15 +11,25 @@ interface MarketTick {
     time: string;
 }
 
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting';
+type MarketStatusValue = 'OPEN' | 'CLOSED';
+
+interface BrokerStatus {
+    status: ConnectionStatus;
+    message: string;
+}
+
+interface MarketStatus {
+    status: MarketStatusValue;
+}
+
 interface WebSocketCallbacks {
     onSignal: (signal: Signal) => void;
     onTick: (tick: MarketTick) => void;
+    onBrokerStatus: (status: BrokerStatus) => void;
+    onMarketStatus: (status: MarketStatus) => void;
 }
 
-/**
- * Connects to the backend WebSocket server to receive live data.
- * @param callbacks An object containing callbacks for different event types.
- */
 export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
     if (webSocket && webSocket.readyState === WebSocket.OPEN) {
         console.log('WebSocket connection already open.');
@@ -39,6 +49,10 @@ export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
                 callbacks.onSignal(message.payload);
             } else if (message.type === 'market_tick' && message.payload) {
                 callbacks.onTick(message.payload);
+            } else if (message.type === 'broker_status_update' && message.payload) {
+                callbacks.onBrokerStatus(message.payload);
+            } else if (message.type === 'market_status_update' && message.payload) {
+                callbacks.onMarketStatus(message.payload);
             }
         } catch (error) {
             console.error('Error parsing WebSocket message:', error);
@@ -56,9 +70,6 @@ export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
     };
 };
 
-/**
- * Disconnects from the WebSocket server.
- */
 export const stopLiveSignalStream = () => {
     if (webSocket) {
         webSocket.close();
@@ -66,12 +77,7 @@ export const stopLiveSignalStream = () => {
     }
 };
 
-/**
- * Calls the backtesting API endpoint.
- * @param config The configuration for the backtest.
- * @returns A promise that resolves with the backtest results.
- */
-export const runBacktest = async (config: { period: string }): Promise<BacktestResults> => {
+export const runBacktest = async (config: { period: string; timeframe: string }): Promise<BacktestResults> => {
     console.log('Running backtest with config:', config);
     const response = await fetch(`${API_BASE_URL}/backtest`, {
         method: 'POST',
@@ -81,18 +87,14 @@ export const runBacktest = async (config: { period: string }): Promise<BacktestR
         body: JSON.stringify(config),
     });
 
+    const data = await response.json();
     if (!response.ok) {
-        throw new Error('Backtest API call failed');
+        throw new Error(data.message || 'Backtest API call failed');
     }
 
-    return response.json();
+    return data;
 };
 
-/**
- * Saves the rule configuration to the server.
- * @param rules The array of rule configurations to save.
- * @returns A promise that resolves when the save is complete.
- */
 export const saveRuleConfiguration = async (rules: CustomizableRule[]): Promise<{ status: string }> => {
     console.log('Saving rule configuration:', rules);
     const response = await fetch(`${API_BASE_URL}/rules`, {
@@ -110,12 +112,6 @@ export const saveRuleConfiguration = async (rules: CustomizableRule[]): Promise<
     return response.json();
 };
 
-/**
- * Connects to the broker with API credentials.
- * @param apiKey The user's broker API key.
- * @param accessToken The daily-generated access token.
- * @returns A promise that resolves on successful connection or rejects on failure.
- */
 export const connectToBroker = async (apiKey: string, accessToken: string): Promise<{ status: string; message: string }> => {
     console.log('Attempting to connect to broker...');
     const response = await fetch(`${API_BASE_URL}/broker/connect`, {

@@ -11,6 +11,8 @@ const originalSignal = {
   rulesPassed: ["Market Structure", "Volume Analysis", "IB Breakout"],
   rulesFailed: ["Component Divergence", "Momentum"],
   conviction: 68,
+  // FIX: Added missing 'timeframe' property to conform to the Signal type.
+  timeframe: '5m',
 };
 
 const mlEnhancedSignal = {

@@ -8,10 +8,10 @@ interface SectionCardProps {
 
 const SectionCard: React.FC<SectionCardProps> = ({ title, iconClass, children }) => {
   return (
-    <div className="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700">
-      <div className="flex items-center mb-4">
-        <i className={`${iconClass} text-xl text-cyan-400 mr-3`}></i>
-        <h2 className="text-xl font-semibold text-white">{title}</h2>
+    <div className="bg-zinc-800 p-2 border border-zinc-700">
+      <div className="flex items-center mb-3">
+        <i className={`${iconClass} text-lg text-cyan-400 mr-3`}></i>
+        <h2 className="text-lg font-semibold text-white">{title}</h2>
       </div>
       <div>{children}</div>
     </div>

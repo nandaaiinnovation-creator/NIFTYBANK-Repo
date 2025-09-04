@@ -7,12 +7,10 @@ const { Pool } = require('pg'); // Database client
 const PriceActionEngine = require('./PriceActionEngine');
 
 // --- DATABASE SETUP ---
-// Connection string is now loaded from environment variables
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// Function to create necessary tables if they don't exist
 const initializeDatabase = async () => {
   try {
     await db.query(`
@@ -39,6 +37,23 @@ const initializeDatabase = async () => {
       );
     `);
     console.log('Table "user_rule_configurations" is ready.');
+    
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS historical_candles (
+          id SERIAL PRIMARY KEY,
+          instrument_token INTEGER NOT NULL,
+          timeframe VARCHAR(10) NOT NULL,
+          timestamp TIMESTAMPTZ NOT NULL,
+          open NUMERIC(10, 2) NOT NULL,
+          high NUMERIC(10, 2) NOT NULL,
+          low NUMERIC(10, 2) NOT NULL,
+          close NUMERIC(10, 2) NOT NULL,
+          volume BIGINT,
+          UNIQUE(instrument_token, timeframe, timestamp)
+      );
+    `);
+    console.log('Table "historical_candles" is ready.');
+
   } catch (err) {
     console.error('Error initializing database tables:', err);
     process.exit(1);
@@ -92,60 +107,21 @@ app.post('/api/broker/connect', async (req, res) => {
   }
 });
 
-// --- MOCK DATA GENERATORS FOR BACKTEST ---
-const generateMockCandles = (numCandles, startPrice) => {
-    let price = startPrice;
-    const candles = [];
-    for (let i = 0; i < numCandles; i++) {
-        const open = price;
-        const change = (Math.random() - 0.48) * 100;
-        const close = price + change;
-        const high = Math.max(open, close) + Math.random() * 20;
-        const low = Math.min(open, close) - Math.random() * 20;
-        candles.push({ id: i, open, high, low, close });
-        price = close;
+
+app.post('/api/backtest', async (req, res) => {
+    const { period, timeframe } = req.body;
+    console.log(`Running backtest for period: ${period}, timeframe: ${timeframe}`);
+    
+    try {
+        const results = await engine.runHistoricalAnalysis(period, timeframe);
+        res.status(200).json(results);
+    } catch (error) {
+        console.error("Backtest failed on server:", error.message);
+        if (error.message.includes("broker is not connected")) {
+             return res.status(400).json({ status: 'error', message: 'Broker is not connected. Please connect on the main dashboard first.' });
+        }
+        res.status(500).json({ status: 'error', message: 'An error occurred during the backtest.' });
     }
-    return candles;
-};
-
-const generateMockTrades = (numTrades, numCandles, candles) => {
-    const trades = [];
-    if (numCandles < 10) return [];
-    for (let i = 0; i < numTrades; i++) {
-        const type = Math.random() > 0.5 ? 'BUY' : 'SELL';
-        const entryIndex = Math.floor(Math.random() * (numCandles - 5));
-        const exitIndex = entryIndex + Math.floor(Math.random() * 4) + 1;
-        trades.push({
-            type,
-            entryIndex,
-            exitIndex,
-            entryPrice: candles[entryIndex].close,
-            exitPrice: candles[exitIndex].close,
-        });
-    }
-    return trades;
-};
-
-
-app.post('/api/backtest', (req, res) => {
-    const { period } = req.body;
-    console.log(`Running backtest for period: ${period}`);
-    
-    // Mock results based on the period
-    const resultsMap = {
-      '1': { period: "1 Year", winRate: "71.2%", profitFactor: "2.3", totalTrades: "151", maxDrawdown: "9.8%" },
-      '3': { period: "3 Years", winRate: "68.5%", profitFactor: "2.1", totalTrades: "452", maxDrawdown: "12.3%" },
-      '5': { period: "5 Years", winRate: "67.9%", profitFactor: "1.9", totalTrades: "743", maxDrawdown: "14.1%" }
-    };
-    
-    const stats = resultsMap[period] || resultsMap['3'];
-    const numCandles = 100;
-    const candles = generateMockCandles(numCandles, 54000);
-    const trades = generateMockTrades(8, numCandles, candles);
-
-    const mockResults = { ...stats, candles, trades };
-    
-    setTimeout(() => res.status(200).json(mockResults), 1500); // Simulate delay
 });
 
 app.post('/api/rules', async (req, res) => {

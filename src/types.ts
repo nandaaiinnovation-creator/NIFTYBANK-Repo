@@ -10,8 +10,9 @@ export interface Signal {
   price: number;
   direction: SignalDirection;
   rulesPassed: string[];
-  rulesFailed: string[];
+  rulesFailed:string[];
   conviction: number;
+  timeframe: string;
 }
 
 export interface TradingRule {
@@ -37,22 +38,16 @@ export interface BacktestCandle {
     high: number;
     low: number;
     close: number;
+    date: string; // ISO string from server
 }
 
-export interface BacktestTrade {
-    entryPrice: number;
-    exitPrice: number;
-    entryIndex: number;
-    exitIndex: number;
-    type: 'BUY' | 'SELL';
+export interface BacktestSignal extends Signal {
+    candleIndex: number;
 }
 
 export interface BacktestResults {
     period: string;
-    winRate: string;
-    profitFactor: string;
-    totalTrades: string;
-    maxDrawdown: string;
-    candles?: BacktestCandle[];
-    trades?: BacktestTrade[];
+    timeframe: string;
+    candles: BacktestCandle[];
+    signals: BacktestSignal[];
 }

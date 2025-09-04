@@ -3,7 +3,7 @@ import { SignalDirection } from './types';
 import type { Signal, TradingRule, TechStackItem, Section } from './types';
 
 export const sections: Section[] = [
-    { id: 'trading-terminal', title: 'Trading Terminal', iconClass: 'fa-solid fa-desktop' },
+    { id: 'dashboard', title: 'Live Dashboard', iconClass: 'fa-solid fa-desktop' },
     { id: 'backtesting', title: 'Backtesting Engine', iconClass: 'fa-solid fa-backward-fast' },
     { id: 'ml-intelligence', title: 'ML Intelligence', iconClass: 'fa-solid fa-brain' },
     { id: 'system-architecture', title: 'System Architecture', iconClass: 'fa-solid fa-sitemap' },
@@ -52,6 +52,7 @@ export const exampleSignal1: Signal = {
   rulesPassed: ["PrevDayLevels", "SupportResistance", "InitialBalanceBreakout"],
   rulesFailed: ["Momentum", "OIData"],
   conviction: 72,
+  timeframe: '5m',
 };
 
 export const exampleSignal2: Signal = {
@@ -62,4 +63,5 @@ export const exampleSignal2: Signal = {
   rulesPassed: ["Market Structure", "Component Divergence", "Volume Analysis"],
   rulesFailed: ["Candlestick Patterns"],
   conviction: 85,
+  timeframe: '1m',
 };

@@ -127,7 +127,17 @@ const LiveSignals: React.FC = () => {
   useEffect(() => {
     if (isReceiving) {
       // FIX: Corrected function name to match import.
-      startLiveSignalStream({ onSignal: handleNewSignal, onTick: handleNewTick });
+      // FIX: Added missing onBrokerStatus and onMarketStatus callbacks to satisfy the WebSocketCallbacks type.
+      startLiveSignalStream({
+        onSignal: handleNewSignal,
+        onTick: handleNewTick,
+        onBrokerStatus: () => {
+          // This component does not handle broker status updates directly, but the callback is required.
+        },
+        onMarketStatus: () => {
+          // This component does not handle market status updates directly, but the callback is required.
+        },
+      });
     } else {
       // FIX: Corrected function name to match import.
       stopLiveSignalStream();

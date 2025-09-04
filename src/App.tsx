@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
-import Header from './components/Header';
-import Sidebar from './components/Sidebar';
+import Navbar from './components/Navbar';
+import Watchlist from './components/Watchlist';
 import Backtesting from './components/Backtesting';
-import { sections } from './constants';
-import TradingTerminal from './components/TradingTerminal';
+import Dashboard from './components/Dashboard';
 import MLIntelligence from './components/MLIntelligence';
 import SystemArchitecture from './components/SystemArchitecture';
-
+import { sections } from './constants';
+import BrokerConnectModal from './components/BrokerConnectModal';
 
 const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<string>(sections[0].id);
 
   const renderSectionContent = () => {
     switch (activeSection) {
-      case 'trading-terminal':
-        return <TradingTerminal />;
+      case 'dashboard':
+        return <Dashboard />;
       case 'backtesting':
         return <Backtesting />;
       case 'ml-intelligence':
@@ -27,14 +27,13 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="h-screen bg-gray-900 text-gray-200 font-sans antialiased flex flex-col">
-      <Header />
+    <div className="h-screen bg-zinc-900 text-gray-300 font-sans antialiased flex flex-col">
+      <BrokerConnectModal />
+      <Navbar />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar sections={sections} activeSection={activeSection} setActiveSection={setActiveSection} />
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto bg-gray-900">
-          <div className="w-full max-w-7xl mx-auto">
-            {renderSectionContent()}
-          </div>
+        <Watchlist activeSection={activeSection} setActiveSection={setActiveSection} />
+        <main className="flex-1 p-2 overflow-y-auto">
+          {renderSectionContent()}
         </main>
       </div>
     </div>
