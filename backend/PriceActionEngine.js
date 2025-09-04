@@ -1,4 +1,5 @@
 
+
 const { GoogleGenAI } = require("@google/genai");
 const { KiteConnect } = require("kiteconnect");
 const { KiteTicker } = require("kiteconnect");
@@ -713,46 +714,350 @@ class PriceActionEngine {
     return { wins, losses, totalProfit, totalLoss, peakEquity, maxDrawdown, equityCurve, netProfit, avgWin, avgLoss, rulePerformance, trades: detailedTrades };
   }
 
-  // --- OTHER METHODS ---
-  // ... All other helper methods (_checkMarketHours, _getHistoricalDataWithCache, _broadcast, etc.) remain unchanged
-  
-}
+  // --- IMPLEMENTED RULE HELPERS ---
 
-// Dummy methods to avoid breaking the code, will be filled in as we go.
-PriceActionEngine.prototype._checkMarketHours = function() { /* Unchanged */ };
-PriceActionEngine.prototype._getHistoricalDataWithCache = async function(config, instrumentToken) { /* Mostly unchanged, simplified for brevity */ 
+  _calculateRSI(history, period, timeframe) {
+    if (history.length < period) return;
+    const closes = history.map(c => c.close);
+    let gains = 0;
+    let losses = 0;
+
+    // Initial average
+    for (let i = 1; i <= period; i++) {
+        const diff = closes[i] - closes[i - 1];
+        if (diff > 0) gains += diff;
+        else losses += Math.abs(diff);
+    }
+
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+
+    for (let i = period + 1; i < closes.length; i++) {
+        const diff = closes[i] - closes[i - 1];
+        if (diff > 0) {
+            avgGain = (avgGain * (period - 1) + diff) / period;
+            avgLoss = (avgLoss * (period - 1)) / period;
+        } else {
+            avgGain = (avgGain * (period - 1)) / period;
+            avgLoss = (avgLoss * (period - 1) + Math.abs(diff)) / period;
+        }
+    }
+
+    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    const rsiValue = 100 - (100 / (1 + rs));
+
+    this.rsi[timeframe].value = rsiValue;
+    this.rsi[timeframe].history.push(rsiValue);
+    if (this.rsi[timeframe].history.length > 50) this.rsi[timeframe].history.shift();
+  }
+
+  _setInitialBalance(tick) {
+    if (this.initialBalance.set) return;
+    const tickTime = new Date(tick.timestamp);
+    const hours = tickTime.getHours();
+    const minutes = tickTime.getMinutes();
+
+    if (hours === 9 && minutes >= 15 && minutes < 30) {
+        if (this.initialBalance.high === 0) {
+            this.initialBalance.high = tick.last_price;
+            this.initialBalance.low = tick.last_price;
+        } else {
+            this.initialBalance.high = Math.max(this.initialBalance.high, tick.last_price);
+            this.initialBalance.low = Math.min(this.initialBalance.low, tick.last_price);
+        }
+    } else if (hours === 9 && minutes >= 30) {
+        this.initialBalance.set = true;
+        console.log(`Initial Balance set: High=${this.initialBalance.high}, Low=${this.initialBalance.low}`);
+    }
+  }
+
+  _updateHTFTrend(history15m) {
+      if (history15m.length < 20) return;
+      const closes = history15m.map(c => c.close);
+      const period = 20;
+      const k = 2 / (period + 1);
+      let ema = closes[0];
+      for (let i = 1; i < closes.length; i++) {
+          ema = (closes[i] * k) + (ema * (1-k));
+      }
+      const lastClose = closes[closes.length - 1];
+      if (lastClose > ema * 1.001) this.htfTrend = 'UP';
+      else if (lastClose < ema * 0.999) this.htfTrend = 'DOWN';
+      else this.htfTrend = 'NEUTRAL';
+  }
+
+  _checkHTFAlignment(timeframe) {
+    if (timeframe === '15m') return null; // No higher timeframe to align to
+    if (this.htfTrend === 'UP') return 'bullish';
+    if (this.htfTrend === 'DOWN') return 'bearish';
+    return null;
+  }
+
+  _checkVolumeSpike(candle, history) {
+    if (!candle.volume || history.length < 20) return false;
+    const avgVolume = history.slice(-20).reduce((acc, c) => acc + (c.volume || 0), 0) / 20;
+    return candle.volume > avgVolume * 1.5;
+  }
+
+  _checkMarketStructure(candle, history) {
+    const lookback = history.slice(-15);
+    const recentHigh = Math.max(...lookback.map(c => c.high));
+    const recentLow = Math.min(...lookback.map(c => c.low));
+    if (candle.close > recentHigh) return 'bullish';
+    if (candle.close < recentLow) return 'bearish';
+    return null;
+  }
+
+  _checkSupportResistance(candle) {
+    const levels = [
+        this.previousDayHigh, this.previousDayLow, this.previousDayClose,
+        this.marketVitals.open, this.initialBalance.high, this.initialBalance.low
+    ].filter(l => l > 0);
+
+    const proximity = this.atr[candle.timeframe] * 0.25 || candle.close * 0.001;
+    
+    for (const level of levels) {
+        // Bullish bounce
+        if (Math.abs(candle.low - level) < proximity && candle.close > candle.open) return { direction: 'bullish' };
+        // Bearish rejection
+        if (Math.abs(candle.high - level) < proximity && candle.close < candle.open) return { direction: 'bearish' };
+        // Bullish breakout
+        if (candle.open < level && candle.close > level) return { direction: 'bullish' };
+        // Bearish breakdown
+        if (candle.open > level && candle.close < level) return { direction: 'bearish' };
+    }
+    return null;
+  }
+
+  _checkInitialBalanceBreakout(candle) {
+    if (!this.initialBalance.set) return null;
+    if (candle.close > this.initialBalance.high) return 'bullish';
+    if (candle.close < this.initialBalance.low) return 'bearish';
+    return null;
+  }
+
+  _checkConsolidationBreakout(candle, history) {
+    const lookback = history.slice(-10);
+    if (lookback.length < 10) return null;
+
+    const maxHigh = Math.max(...lookback.map(c => c.high));
+    const minLow = Math.min(...lookback.map(c => c.low));
+    const range = maxHigh - minLow;
+    const isConsolidating = range < (this.atr[candle.timeframe] || candle.close * 0.003);
+
+    if (isConsolidating) {
+        if (candle.close > maxHigh) return { direction: 'bullish', isConsolidating: false };
+        if (candle.close < minLow) return { direction: 'bearish', isConsolidating: false };
+        return { direction: null, isConsolidating: true };
+    }
+    return null;
+  }
+
+  _checkCandlestickPattern(candle, history) {
+    if (history.length < 1) return null;
+    const prevCandle = history[history.length - 1];
+    
+    // Engulfing
+    const isBullishEngulfing = prevCandle.close < prevCandle.open && candle.close > candle.open && candle.close > prevCandle.open && candle.open < prevCandle.close;
+    if (isBullishEngulfing) return 'bullish';
+    const isBearishEngulfing = prevCandle.close > prevCandle.open && candle.close < candle.open && candle.close < prevCandle.open && candle.open > prevCandle.close;
+    if (isBearishEngulfing) return 'bearish';
+
+    // Pin Bar
+    const range = candle.high - candle.low;
+    const body = Math.abs(candle.close - candle.open);
+    if (range < (this.atr[candle.timeframe] * 0.5)) return null; // Ignore small dojis
+
+    const upperWick = candle.high - Math.max(candle.open, candle.close);
+    const lowerWick = Math.min(candle.open, candle.close) - candle.low;
+
+    if (lowerWick > body * 2 && upperWick < body) return 'bullish'; // Hammer
+    if (upperWick > body * 2 && lowerWick < body) return 'bearish'; // Shooting Star
+
+    return null;
+  }
+
+  _checkPreviousDayLevels(candle) {
+    if (candle.close > this.previousDayHigh) return 'bullish';
+    if (candle.close < this.previousDayLow) return 'bearish';
+    return null;
+  }
+
+  _checkMomentumDivergence(candle, history, timeframe) {
+      const lookback = 14;
+      if (history.length < lookback || this.rsi[timeframe].history.length < lookback) return null;
+
+      const priceHistory = history.slice(-lookback);
+      const rsiHistory = this.rsi[timeframe].history.slice(-lookback);
+
+      const lastHighPrice = Math.max(...priceHistory.map(p => p.high));
+      const lastLowPrice = Math.min(...priceHistory.map(p => p.low));
+
+      const lastHighRsi = Math.max(...rsiHistory);
+      const lastLowRsi = Math.min(...rsiHistory);
+
+      // Bearish Divergence
+      if (candle.high > lastHighPrice && this.rsi[timeframe].value < lastHighRsi) return 'bearish';
+      // Bullish Divergence
+      if (candle.low < lastLowPrice && this.rsi[timeframe].value > lastLowRsi) return 'bullish';
+      
+      return null;
+  }
+
+  // --- OTHER METHODS ---
+  _checkMarketHours() {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const day = now.getDay();
+
+    if (day > 0 && day < 6 && ((hours === 9 && minutes >= 15) || (hours > 9 && hours < 15) || (hours === 15 && minutes <= 30))) {
+        if (this.marketStatus !== 'OPEN') {
+            this.marketStatus = 'OPEN';
+            this._broadcastMarketStatus();
+            console.log("Market is now OPEN.");
+        }
+    } else {
+        if (this.marketStatus !== 'CLOSED') {
+            this.marketStatus = 'CLOSED';
+            this._broadcastMarketStatus();
+            console.log("Market is now CLOSED.");
+        }
+    }
+  }
+
+  async _getHistoricalDataWithCache(config, instrumentToken) {
     const { fromDate, toDate } = this._getDateRange(config.period, config.from, config.to);
     const kiteTimeframe = { '1m': 'minute', '3m': '3minute', '5m': '5minute', '15m': '15minute' }[config.timeframe];
+    
+    console.log(`Fetching data for ${instrumentToken} (${config.timeframe}) from ${fromDate.toISOString()} to ${toDate.toISOString()}`);
+
     try {
-        const apiData = await this.kite.getHistoricalData(instrumentToken, kiteTimeframe, fromDate, toDate);
-        // DB Caching Logic would go here
+        if (!this.kite) throw new Error("Broker is not connected. Cannot fetch fresh data.");
+        const apiData = await this.kite.getHistoricalData(instrumentToken, kiteTimeframe, fromDate, toDate, true);
+        console.log(`Fetched ${apiData.length} fresh candles from broker.`);
+        
+        // Asynchronously cache the fresh data
+        if (apiData.length > 0) {
+            this._cacheCandles(apiData, instrumentToken, config.timeframe);
+        }
+
         const candles = apiData.map(r => ({ ...r, date: new Date(r.date), open: parseFloat(r.open), high: parseFloat(r.high), low: parseFloat(r.low), close: parseFloat(r.close), volume: parseInt(r.volume, 10) }));
         return { candles, dataSourceMessage: "Fetched fresh data from broker." };
-    } catch(e) {
-        // Fallback to DB
-        return { candles: [], dataSourceMessage: "Broker fetch failed. Using cache." };
+    } catch (e) {
+        console.warn(`Broker fetch failed: ${e.message}. Falling back to local cache.`);
+        const query = `
+            SELECT * FROM historical_candles 
+            WHERE instrument_token = $1 AND timeframe = $2 AND timestamp BETWEEN $3 AND $4
+            ORDER BY timestamp ASC;
+        `;
+        const { rows } = await this.db.query(query, [instrumentToken, config.timeframe, fromDate, toDate]);
+        console.log(`Fetched ${rows.length} candles from local cache.`);
+        const candles = rows.map(r => ({ ...r, date: new Date(r.timestamp) }));
+        return { candles, dataSourceMessage: "Broker unavailable. Used local cache." };
     }
-};
-PriceActionEngine.prototype._getDateRange = function(period, from, to) { /* Unchanged */ return { fromDate: new Date(), toDate: new Date() } };
-PriceActionEngine.prototype._broadcast = function(message) { /* Unchanged */ };
-PriceActionEngine.prototype._broadcastSignal = function(signal) { this._broadcast({ type: 'new_signal', payload: signal }); };
-PriceActionEngine.prototype._broadcastTick = function(tick) { this._broadcast({ type: 'market_tick', payload: tick }); };
-PriceActionEngine.prototype._broadcastConnectionStatus = function() { /* Unchanged */ };
-PriceActionEngine.prototype._broadcastMarketStatus = function() { /* Unchanged */ };
-PriceActionEngine.prototype._broadcastMarketVitals = function() { this._broadcast({ type: 'market_vitals_update', payload: this.marketVitals }); };
-PriceActionEngine.prototype._calculateRSI = function(history, period, timeframe) { /* Unchanged */ };
-PriceActionEngine.prototype._setInitialBalance = function(tick) { /* Unchanged */ };
-PriceActionEngine.prototype._updateHTFTrend = function(history15m) { /* Unchanged */ };
-PriceActionEngine.prototype._checkHTFAlignment = function(timeframe) { /* Unchanged */ return null };
-PriceActionEngine.prototype._checkVolumeSpike = function(candle, history) { /* Unchanged */ return false };
-PriceActionEngine.prototype._checkMarketStructure = function(candle, history) { /* Unchanged */ return null };
-PriceActionEngine.prototype._checkSupportResistance = function(candle) { /* Unchanged */ return null };
-PriceActionEngine.prototype._checkInitialBalanceBreakout = function(candle) { /* Unchanged */ return null };
-PriceActionEngine.prototype._checkConsolidationBreakout = function(candle, history) { /* Unchanged */ return null };
-PriceActionEngine.prototype._checkCandlestickPattern = function(candle, history) { /* Unchanged */ return null };
-PriceActionEngine.prototype._checkPreviousDayLevels = function(candle) { /* Unchanged */ return null };
-PriceActionEngine.prototype._checkMomentumDivergence = function(candle, history, timeframe) { /* Unchanged */ return null };
-PriceActionEngine.prototype.getAIStrategySuggestions = async function(results, apiKey) { return "AI suggestions placeholder." };
+  }
 
+  async _cacheCandles(candles, instrumentToken, timeframe) {
+    const query = `
+        INSERT INTO historical_candles (instrument_token, timeframe, timestamp, open, high, low, close, volume)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (instrument_token, timeframe, timestamp) DO NOTHING;
+    `;
+    const client = await this.db.connect();
+    try {
+        await client.query('BEGIN');
+        for (const candle of candles) {
+            await client.query(query, [instrumentToken, timeframe, candle.date, candle.open, candle.high, candle.low, candle.close, candle.volume]);
+        }
+        await client.query('COMMIT');
+        console.log(`Successfully cached ${candles.length} candles.`);
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error("Failed to cache candles:", e);
+    } finally {
+        client.release();
+    }
+  }
+  
+  _getDateRange(period, from, to) { 
+    const toDate = to ? new Date(to) : new Date();
+    let fromDate;
+
+    if (from) {
+        fromDate = new Date(from);
+    } else {
+        fromDate = new Date(toDate);
+        switch (period) {
+            case '1 month': fromDate.setMonth(toDate.getMonth() - 1); break;
+            case '3 months': fromDate.setMonth(toDate.getMonth() - 3); break;
+            case '6 months': fromDate.setMonth(toDate.getMonth() - 6); break;
+            case '1 year': fromDate.setFullYear(toDate.getFullYear() - 1); break;
+            case '3 years': fromDate.setFullYear(toDate.getFullYear() - 3); break;
+            case '5 years': fromDate.setFullYear(toDate.getFullYear() - 5); break;
+            default: fromDate.setMonth(toDate.getMonth() - 1);
+        }
+    }
+    return { fromDate, toDate };
+  }
+
+  _broadcast(message) {
+    this.wss.clients.forEach(client => {
+        if (client.readyState === 1) { // WebSocket.OPEN
+            client.send(JSON.stringify(message));
+        }
+    });
+  }
+
+  _broadcastSignal(signal) { this._broadcast({ type: 'new_signal', payload: signal }); };
+  _broadcastTick(tick) { this._broadcast({ type: 'market_tick', payload: { price: tick.last_price, time: tick.timestamp } }); };
+  _broadcastConnectionStatus() { this._broadcast({ type: 'broker_status_update', payload: { status: this.connectionStatus, message: this.connectionMessage }}); };
+  _broadcastMarketStatus() { this._broadcast({ type: 'market_status_update', payload: { status: this.marketStatus } }); };
+  _broadcastMarketVitals() { this._broadcast({ type: 'market_vitals_update', payload: this.marketVitals }); };
+  
+  async getAIStrategySuggestions(results, apiKey) { 
+      if (!apiKey) throw new Error("A Gemini API Key is required for this feature.");
+      const ai = new GoogleGenAI({apiKey});
+
+      const prompt = `
+        You are a quantitative trading analyst. Analyze the following backtest results for a BankNIFTY intraday trading strategy and provide specific, actionable suggestions for improvement. Be concise and focus on the data provided.
+
+        Backtest Summary:
+        - Instrument: ${results.instrument} on ${results.timeframe} timeframe.
+        - Win Rate: ${results.winRate}
+        - Total Trades: ${results.totalTrades}
+        - Net Profit (Points): ${results.netProfit.toFixed(2)}
+        - Exit Strategy: ${results.tradeExitStrategy}
+
+        Rule Performance (how many times each rule contributed to a winning or losing trade):
+        ${results.rulePerformance.map(r => `- ${r.rule}: ${r.wins} Wins, ${r.losses} Losses (Win Rate: ${r.winRate})`).join('\n')}
+
+        Based on this data, provide 2-3 specific suggestions. For example, should any rules be given more or less importance? Is there a clear weakness? Is the exit strategy appropriate? Format the output as simple HTML bullet points.
+      `;
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt
+        });
+
+        // Basic HTML formatting for display
+        let suggestionsText = response.text
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\* (.*?)(?=\n\*|\n\n|$)/g, '<li>$1</li>');
+        
+        return `<ul>${suggestionsText}</ul>`;
+
+    } catch (error) {
+        console.error("Gemini API call failed:", error);
+        if (error.message && (error.message.includes('API key not valid') || error.message.includes('permission'))) {
+            throw new Error('The provided Gemini API Key is invalid or does not have the required permissions.');
+        }
+        if (error.message && (error.message.includes('billing') || error.message.includes('quota'))) {
+            throw new Error('The AI analysis could not be completed due to a billing issue. Please check your Google AI Platform account and ensure you have a valid payment method.');
+        }
+        throw new Error('An unexpected error occurred while communicating with the AI model.');
+    }
+  }
+}
 
 module.exports = PriceActionEngine;
