@@ -8,6 +8,7 @@ const ticksLogPath = path.join(__dirname, 'data', 'ticks.log');
 
 
 const ruleWeights = {
+    "HTF Alignment": 20, // New rule with high weight
     "Breakout & Retest": 15,
     "Market Structure": 10,
     "Volume Analysis": 8,
@@ -52,6 +53,13 @@ class PriceActionEngine {
         low: 0,
         vix: 0,
     };
+    
+    // --- NEW ENHANCEMENTS STATE ---
+    this.htfTrend = 'NEUTRAL'; // Higher Timeframe Trend (from 15m)
+    this.dailyRulePerformance = {}; // For intraday feedback loop { [ruleName]: { wins: 0, losses: 0 } }
+    this.lastSignalForFeedback = {}; // Stores the last signal on each timeframe to evaluate its outcome
+    this.timeframes.forEach(tf => this.lastSignalForFeedback[tf] = null);
+    // --- END NEW ENHANCEMENTS STATE ---
 
     // Status Management
     this.connectionStatus = 'disconnected';
@@ -81,6 +89,7 @@ class PriceActionEngine {
 
       await this._fetchPreMarketData();
       await this._initializeMarketVitals();
+      this._resetDailyStats(); // Reset intraday learning stats on new connection
       this._startLiveTicker();
     } catch (error) {
       console.error("Kite connection error:", error);
@@ -91,6 +100,16 @@ class PriceActionEngine {
     }
   }
   
+  _resetDailyStats() {
+    console.log('Resetting daily performance stats for the intraday feedback loop.');
+    this.dailyRulePerformance = {};
+    Object.keys(ruleWeights).forEach(rule => {
+        this.dailyRulePerformance[rule] = { wins: 0, losses: 0, net: 0 };
+    });
+    this.timeframes.forEach(tf => this.lastSignalForFeedback[tf] = null);
+    this.htfTrend = 'NEUTRAL';
+  }
+
   async _fetchPreMarketData() {
     console.log("Fetching pre-market data (e.g., Previous Day H/L/C)...");
     try {
@@ -219,6 +238,8 @@ class PriceActionEngine {
 
   _checkMarketHours() {
     const now = new Date();
+    const isNewDay = now.getHours() < 2 && (this.marketStatus === 'CLOSED');
+
     const hours = now.getUTCHours();
     const minutes = now.getUTCMinutes();
     const day = now.getUTCDay();
@@ -234,6 +255,9 @@ class PriceActionEngine {
     }
     
     if (this.marketStatus !== currentMarketStatus) {
+        if (currentMarketStatus === 'OPEN') {
+            this._resetDailyStats(); // Reset stats at market open
+        }
         this.marketStatus = currentMarketStatus;
         console.log(`Market status changed to: ${this.marketStatus}`);
         this._broadcastMarketStatus();
@@ -260,8 +284,17 @@ class PriceActionEngine {
                 if (this.historicalCandlesForContext[tf].length > 100) {
                     this.historicalCandlesForContext[tf].shift(); // Keep buffer size manageable
                 }
+                
+                // Update HTF trend if it's the 15m candle
+                if (tf === '15m') {
+                    this._updateHTFTrend(this.historicalCandlesForContext['15m']);
+                }
+
                 const signal = this._evaluateRules(closedCandle, tf, this.historicalCandlesForContext[tf]);
-                if (signal) this._broadcastSignal(signal);
+                if (signal) {
+                    this._updateFeedbackLoop(signal); // Update intraday learning
+                    this._broadcastSignal(signal);
+                }
             }
         }
         if (!this.candles[tf] || (minute % interval === 0 && this.candles[tf].minute !== minute)) {
@@ -280,7 +313,16 @@ class PriceActionEngine {
 
       const bullishRulesPassed = [];
       const bearishRulesPassed = [];
-      const allRulesFailed = new Set(Object.keys(ruleWeights));
+      
+      // Filter out disabled rules based on intraday performance
+      const activeRules = Object.keys(ruleWeights).filter(rule => {
+          const stats = this.dailyRulePerformance[rule];
+          if (!stats) return true;
+          // Disable rule if it has more than 2 net losses for the day
+          return stats.net > -3;
+      });
+      const allRulesFailed = new Set(activeRules);
+
 
       // --- MARKET REGIME FILTER ---
       const vix = this.marketVitals.vix;
@@ -289,81 +331,96 @@ class PriceActionEngine {
       if (vix > 22) marketRegime = 'High';
 
       // --- RULE EVALUATIONS ---
-
+      
+      // 0. HTF Trend Alignment (New Rule)
+      const htfAlignment = this._checkHTFAlignment(timeframe);
+      if (htfAlignment === 'bullish') {
+          bullishRulesPassed.push("HTF Alignment");
+          allRulesFailed.delete("HTF Alignment");
+      } else if (htfAlignment === 'bearish') {
+          bearishRulesPassed.push("HTF Alignment");
+          allRulesFailed.delete("HTF Alignment");
+      }
+      
       // 1. Volume Analysis
-      if (this._checkVolumeSpike(candle, history)) {
-          // Volume confirms the direction of the candle
+      if (activeRules.includes("Volume Analysis") && this._checkVolumeSpike(candle, history)) {
           if (candle.close > candle.open) bullishRulesPassed.push("Volume Analysis");
           else bearishRulesPassed.push("Volume Analysis");
           allRulesFailed.delete("Volume Analysis");
       }
 
       // 2. Market Structure
-      const marketStructure = this._checkMarketStructure(candle, history);
-      if (marketStructure === 'bullish') {
-          bullishRulesPassed.push("Market Structure");
-          allRulesFailed.delete("Market Structure");
-      } else if (marketStructure === 'bearish') {
-          bearishRulesPassed.push("Market Structure");
-          allRulesFailed.delete("Market Structure");
+      if (activeRules.includes("Market Structure")) {
+          const marketStructure = this._checkMarketStructure(candle, history);
+          if (marketStructure === 'bullish') {
+              bullishRulesPassed.push("Market Structure");
+              allRulesFailed.delete("Market Structure");
+          } else if (marketStructure === 'bearish') {
+              bearishRulesPassed.push("Market Structure");
+              allRulesFailed.delete("Market Structure");
+          }
       }
 
-      // 3. Support & Resistance (Bounces and Breakouts of key levels)
-      const srSignal = this._checkSupportResistance(candle);
-      if (srSignal) {
-          if (srSignal.direction === 'bullish') bullishRulesPassed.push(srSignal.rule);
-          else bearishRulesPassed.push(srSignal.rule);
-          allRulesFailed.delete(srSignal.rule);
+      // 3. Support & Resistance
+      if (activeRules.includes("Support & Resistance")) {
+          const srSignal = this._checkSupportResistance(candle);
+          if (srSignal) {
+              if (srSignal.direction === 'bullish') bullishRulesPassed.push(srSignal.rule);
+              else bearishRulesPassed.push(srSignal.rule);
+              allRulesFailed.delete(srSignal.rule);
+          }
       }
 
       // 4. Consolidation Breakout
-      const consolidationSignal = this._checkConsolidationBreakout(candle, history);
-      if (consolidationSignal === 'bullish') {
-          bullishRulesPassed.push("Consolidation Breakout");
-           allRulesFailed.delete("Consolidation Breakout");
-      } else if (consolidationSignal === 'bearish') {
-          bearishRulesPassed.push("Consolidation Breakout");
-          allRulesFailed.delete("Consolidation Breakout");
+      if (activeRules.includes("Consolidation Breakout")) {
+          const consolidationSignal = this._checkConsolidationBreakout(candle, history);
+          if (consolidationSignal === 'bullish') {
+              bullishRulesPassed.push("Consolidation Breakout");
+              allRulesFailed.delete("Consolidation Breakout");
+          } else if (consolidationSignal === 'bearish') {
+              bearishRulesPassed.push("Consolidation Breakout");
+              allRulesFailed.delete("Consolidation Breakout");
+          }
       }
       
-      // 5. Candlestick Pattern (Marubozu-like)
-      const candlePattern = this._checkCandlestickPattern(candle);
-       if (candlePattern === 'bullish') {
-          bullishRulesPassed.push("Candlestick Patterns");
-          allRulesFailed.delete("Candlestick Patterns");
-      } else if (candlePattern === 'bearish') {
-          bearishRulesPassed.push("Candlestick Patterns");
-          allRulesFailed.delete("Candlestick Patterns");
+      // 5. Candlestick Pattern
+      if (activeRules.includes("Candlestick Patterns")) {
+          const candlePattern = this._checkCandlestickPattern(candle);
+          if (candlePattern === 'bullish') {
+              bullishRulesPassed.push("Candlestick Patterns");
+              allRulesFailed.delete("Candlestick Patterns");
+          } else if (candlePattern === 'bearish') {
+              bearishRulesPassed.push("Candlestick Patterns");
+              allRulesFailed.delete("Candlestick Patterns");
+          }
       }
 
-      // 6. Previous Day Levels Breakout
-      const pdlSignal = this._checkPreviousDayLevels(candle);
-        if (pdlSignal === 'bullish') {
-          bullishRulesPassed.push("Previous Day Levels");
-          allRulesFailed.delete("Previous Day Levels");
-      } else if (pdlSignal === 'bearish') {
-          bearishRulesPassed.push("Previous Day Levels");
-          allRulesFailed.delete("Previous Day Levels");
+      // 6. Previous Day Levels
+      if (activeRules.includes("Previous Day Levels")) {
+          const pdlSignal = this._checkPreviousDayLevels(candle);
+          if (pdlSignal === 'bullish') {
+              bullishRulesPassed.push("Previous Day Levels");
+              allRulesFailed.delete("Previous Day Levels");
+          } else if (pdlSignal === 'bearish') {
+              bearishRulesPassed.push("Previous Day Levels");
+              allRulesFailed.delete("Previous Day Levels");
+          }
       }
 
       // --- FINAL SIGNAL DECISION ---
-      
-      // Apply Regime Filter
       if (marketRegime === 'High' && (bullishRulesPassed.includes("Consolidation Breakout") || bearishRulesPassed.includes("Consolidation Breakout"))) {
-          return null; // Avoid breakout trades in very high volatility (likely fakeouts)
+          return null; 
       }
 
       let direction = null;
-      // Require a clear consensus to generate a signal
       if (bullishRulesPassed.length > 0 && bullishRulesPassed.length >= bearishRulesPassed.length + 1) {
           direction = 'BUY';
-      } else if (bearishRulesPassed.length > 0 && bearishRulesPassed.length >= bullishRulesPassed.length + 1) {
+      } else if (bearishRulesPassed.length > 0 && bearishRulesPassed.length >= bearishRulesPassed.length + 1) {
           direction = 'SELL';
       }
 
       if (!direction) return null;
       
-      // Noise filter
       if (Math.abs(candle.close - this.lastSignalPrice) < 75) return null;
 
       const rulesPassed = direction === 'BUY' ? bullishRulesPassed : bearishRulesPassed;
@@ -388,6 +445,65 @@ class PriceActionEngine {
 
   // --- RULE HELPER FUNCTIONS ---
 
+  _calculateEMA(data, period) {
+    if (data.length < period) return null;
+    const k = 2 / (period + 1);
+    let ema = data[0].close;
+    for (let i = 1; i < data.length; i++) {
+        ema = data[i].close * k + ema * (1 - k);
+    }
+    return ema;
+  }
+
+  _updateHTFTrend(history15m) {
+    if (history15m.length < 20) return;
+    const ema20 = this._calculateEMA(history15m.slice(-20), 20);
+    const lastCandle = history15m[history15m.length - 1];
+    if (!ema20) return;
+    
+    if (lastCandle.close > ema20) this.htfTrend = 'UP';
+    else if (lastCandle.close < ema20) this.htfTrend = 'DOWN';
+    else this.htfTrend = 'NEUTRAL';
+    console.log(`Updated 15m HTF Trend to: ${this.htfTrend}`);
+  }
+
+  _checkHTFAlignment(timeframe) {
+      if (timeframe === '15m') return null; // Don't apply to itself
+      if (this.htfTrend === 'UP') return 'bullish';
+      if (this.htfTrend === 'DOWN') return 'bearish';
+      return null;
+  }
+  
+  _updateFeedbackLoop(newSignal) {
+    const timeframe = newSignal.timeframe;
+    const previousSignal = this.lastSignalForFeedback[timeframe];
+    
+    // If there was a previous signal and the new one is opposite, a "trade" has closed.
+    if (previousSignal && previousSignal.direction !== newSignal.direction) {
+        const pnl = previousSignal.direction === 'BUY'
+            ? newSignal.price - previousSignal.price
+            : previousSignal.price - newSignal.price;
+        
+        const outcome = pnl > 0 ? 'win' : 'loss';
+        
+        // Update performance for each rule that generated the *previous* signal
+        previousSignal.rulesPassed.forEach(rule => {
+            const stats = this.dailyRulePerformance[rule];
+            if (outcome === 'win') {
+                stats.wins++;
+                stats.net++;
+            } else {
+                stats.losses++;
+                stats.net--;
+            }
+        });
+        console.log(`Feedback Loop (${timeframe}): ${previousSignal.direction} signal closed. Outcome: ${outcome}. PnL: ${pnl.toFixed(2)}.`);
+    }
+    
+    // Store the new signal as the latest for this timeframe
+    this.lastSignalForFeedback[timeframe] = newSignal;
+  }
+
   _checkVolumeSpike(candle, history) {
       if (!candle.volume) return false;
       const recentHistory = history.slice(-20, -1);
@@ -402,8 +518,8 @@ class PriceActionEngine {
       const swingHigh = Math.max(...recentHistory.map(c => c.high));
       const swingLow = Math.min(...recentHistory.map(c => c.low));
 
-      if (candle.close > swingHigh) return 'bullish'; // Break of structure high
-      if (candle.close < swingLow) return 'bearish'; // Break of structure low
+      if (candle.close > swingHigh) return 'bullish';
+      if (candle.close < swingLow) return 'bearish';
       return null;
   }
   
@@ -413,14 +529,11 @@ class PriceActionEngine {
         'PDL': this.previousDayLow,
         'Open': this.marketVitals.open,
     };
-    const proximity = candle.close * 0.001; // 0.1% proximity check
+    const proximity = candle.close * 0.001;
 
     for (const [name, level] of Object.entries(levels)) {
-        // Breakout/Breakdown
         if (candle.open < level && candle.close > level) return { rule: 'Support & Resistance', direction: 'bullish' };
         if (candle.open > level && candle.close < level) return { rule: 'Support & Resistance', direction: 'bearish' };
-
-        // Bounce/Rejection
         if (Math.abs(candle.low - level) < proximity && candle.close > candle.open) return { rule: 'Support & Resistance', direction: 'bullish' };
         if (Math.abs(candle.high - level) < proximity && candle.close < candle.open) return { rule: 'Support & Resistance', direction: 'bearish' };
     }
@@ -435,7 +548,6 @@ class PriceActionEngine {
       const minLow = Math.min(...recentHistory.map(c => c.low));
       const range = maxHigh - minLow;
 
-      // Check if it was in a tight consolidation (e.g., range is less than 0.2%)
       if (range / minLow < 0.002) {
           if (candle.close > maxHigh) return 'bullish';
           if (candle.close < minLow) return 'bearish';
@@ -446,7 +558,7 @@ class PriceActionEngine {
    _checkCandlestickPattern(candle) {
     const bodySize = Math.abs(candle.close - candle.open);
     const range = candle.high - candle.low;
-    if (range > 0 && bodySize / range > 0.7) { // Marubozu-like candle
+    if (range > 0 && bodySize / range > 0.7) {
         return candle.close > candle.open ? 'bullish' : 'bearish';
     }
     return null;
