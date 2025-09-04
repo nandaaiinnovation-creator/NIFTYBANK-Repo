@@ -48,6 +48,7 @@ const signalConfig = {
 
 const SignalCard: React.FC<SignalCardProps> = ({ signal, onClick }) => {
   const config = signalConfig[signal.direction] || signalConfig[SignalDirection.NEUTRAL];
+  const isNewsEvent = !!signal.triggeredDuringEvent;
   
   const time = new Date(signal.time).toLocaleTimeString('en-IN', {
     hour: '2-digit',
@@ -63,17 +64,20 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, onClick }) => {
   };
 
   const isInfoSignal = signal.direction === SignalDirection.PRICE_CONSOLIDATION;
+  const borderColor = isNewsEvent ? 'border-amber-500' : config.borderColor;
 
   return (
     <div 
-        className={`w-full bg-zinc-900 border-l-4 ${config.borderColor} p-1 transition-colors ${onClick ? 'cursor-pointer hover:bg-zinc-800' : ''}`}
+        className={`w-full bg-zinc-900 border-l-4 ${borderColor} p-1 transition-colors ${onClick ? 'cursor-pointer hover:bg-zinc-800' : ''}`}
         onClick={handleCardClick}
+        title={isNewsEvent ? `Triggered during: ${signal.triggeredDuringEvent}` : ''}
     >
       <div className="flex justify-between items-start">
         <div>
           <div className="flex items-center gap-1.5">
             <div className="text-xs font-bold text-white">{signal.symbol}</div>
             <div className="text-[10px] font-mono bg-zinc-700 text-cyan-300 px-1 py-0.5 rounded-sm">{signal.timeframe}</div>
+            {isNewsEvent && <i className="fa-solid fa-newspaper text-amber-400 text-xs"></i>}
           </div>
           <div className="text-[10px] text-zinc-400">{time}</div>
         </div>

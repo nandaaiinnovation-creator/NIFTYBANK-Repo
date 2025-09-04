@@ -16,6 +16,7 @@ export interface Signal {
   rulesFailed:string[];
   conviction: number;
   timeframe: string;
+  triggeredDuringEvent?: string; // For News-Aware signals
 }
 
 export interface TradingRule {
@@ -126,4 +127,21 @@ export interface MarketVitals {
   high: number;
   low: number;
   vix: number;
+}
+
+// --- NEW TYPES FOR NEWS ENGINE ---
+
+export interface NewsEvent {
+    time: string;
+    event: string;
+    impact: 'High' | 'Medium' | 'Low';
+    currency: string;
+}
+
+export type NewsEngineStatus = 'inactive' | 'initializing' | 'monitoring' | 'safe_mode' | 'error';
+
+export interface NewsStatus {
+    status: NewsEngineStatus;
+    message: string;
+    events: NewsEvent[];
 }

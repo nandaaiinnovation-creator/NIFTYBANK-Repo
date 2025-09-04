@@ -1,4 +1,4 @@
-import type { Signal, BacktestResults, SignalPerformance, AISuggestion, MarketVitals } from '../types';
+import type { Signal, BacktestResults, SignalPerformance, AISuggestion, MarketVitals, NewsStatus } from '../types';
 // FIX: The import for `CustomizableRule` was removed because the source file is not a module.
 // A local definition is provided to resolve the type error.
 export interface CustomizableRule {
@@ -39,6 +39,7 @@ interface WebSocketCallbacks {
     onMarketStatus: (status: MarketStatus) => void;
     onSentiment: (sentiment: MarketSentiment) => void;
     onVitals: (vitals: MarketVitals) => void;
+    onNewsStatus: (status: NewsStatus) => void;
 }
 
 export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
@@ -56,18 +57,28 @@ export const startLiveSignalStream = (callbacks: WebSocketCallbacks) => {
     webSocket.onmessage = (event) => {
         try {
             const message = JSON.parse(event.data);
-            if (message.type === 'new_signal' && message.payload) {
-                callbacks.onSignal(message.payload);
-            } else if (message.type === 'market_tick' && message.payload) {
-                callbacks.onTick(message.payload);
-            } else if (message.type === 'broker_status_update' && message.payload) {
-                callbacks.onBrokerStatus(message.payload);
-            } else if (message.type === 'market_status_update' && message.payload) {
-                callbacks.onMarketStatus(message.payload);
-            } else if (message.type === 'market_sentiment_update' && message.payload) {
-                callbacks.onSentiment(message.payload);
-            } else if (message.type === 'market_vitals_update' && message.payload) {
-                callbacks.onVitals(message.payload);
+            switch(message.type) {
+                case 'new_signal':
+                    callbacks.onSignal(message.payload);
+                    break;
+                case 'market_tick':
+                    callbacks.onTick(message.payload);
+                    break;
+                case 'broker_status_update':
+                    callbacks.onBrokerStatus(message.payload);
+                    break;
+                case 'market_status_update':
+                    callbacks.onMarketStatus(message.payload);
+                    break;
+                case 'market_sentiment_update':
+                    callbacks.onSentiment(message.payload);
+                    break;
+                case 'market_vitals_update':
+                    callbacks.onVitals(message.payload);
+                    break;
+                case 'news_status_update':
+                    callbacks.onNewsStatus(message.payload);
+                    break;
             }
         } catch (error) {
             console.error('Error parsing WebSocket message:', error);
@@ -190,6 +201,21 @@ export const getAIStrategySuggestions = async (results: BacktestResults, apiKey:
     const data = await response.json();
     if (!response.ok) {
         throw new Error(data.message || 'Failed to get AI suggestions.');
+    }
+    return data;
+};
+
+export const initializeNewsEngine = async (apiKey: string): Promise<{ status: string; message: string }> => {
+    console.log('Initializing News Engine...');
+    const response = await fetch(`${API_BASE_URL}/news/initialize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || 'Failed to initialize News Engine.');
     }
     return data;
 };

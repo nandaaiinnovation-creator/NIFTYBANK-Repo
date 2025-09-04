@@ -4,6 +4,7 @@ import { useBroker } from '../contexts/BrokerContext';
 import TradingViewChart from './TradingViewChart';
 import SentimentGauge from './SentimentGauge';
 import LiveSignalDetailModal from './LiveSignalDetailModal';
+import EventRiskManager from './EventRiskManager'; // Import the new component
 import type { Signal } from '../types';
 
 const ToggleSwitch: React.FC<{ label: string; enabled: boolean; onToggle: () => void; disabled?: boolean }> = ({ label, enabled, onToggle, disabled }) => (
@@ -66,7 +67,7 @@ const Dashboard: React.FC = () => {
   );
   
   return (
-    <div className="bg-zinc-900 border border-zinc-700 flex flex-col p-2 gap-2">
+    <div className="bg-zinc-900 border border-zinc-700 h-full flex flex-col p-2 gap-2">
         {selectedSignal && <LiveSignalDetailModal signal={selectedSignal} onClose={() => setSelectedSignal(null)} />}
         
         {/* Header */}
@@ -90,7 +91,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex flex-col lg:flex-row gap-2 flex-grow">
+        <div className="flex flex-col lg:flex-row gap-2 flex-grow min-h-0">
             {/* Left Column: Chart */}
             <div className="lg:w-3/5 flex-grow flex flex-col bg-zinc-950 border border-zinc-800 p-2 min-h-[400px]">
                 <h3 className="text-xs font-semibold text-white mb-1 flex-shrink-0">BANKNIFTY Chart</h3>
@@ -115,6 +116,7 @@ const Dashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex flex-col gap-2">
+                        <EventRiskManager />
                         <MarketVitalsPanel />
                         <div className="bg-zinc-950 border border-zinc-800 p-2">
                             <h3 className="text-xs font-semibold text-white mb-1">Market Sentiment</h3>

@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect, useRef } from 'react';
-import { connectToBroker as apiConnectToBroker, startLiveSignalStream, stopLiveSignalStream } from '../services/api';
-import type { Signal, MarketVitals } from '../types';
+import { connectToBroker as apiConnectToBroker, startLiveSignalStream, stopLiveSignalStream, initializeNewsEngine as apiInitializeNewsEngine } from '../services/api';
+import type { Signal, MarketVitals, NewsStatus, NewsEvent, NewsEngineStatus } from '../types';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting';
 type MarketStatus = 'OPEN' | 'CLOSED';
@@ -25,6 +25,12 @@ interface BrokerContextType {
     isChartLive: boolean;
     isSignalFeedActive: boolean;
     isModalOpen: boolean;
+    // News Engine State
+    newsStatus: NewsEngineStatus;
+    newsMessage: string;
+    newsEvents: NewsEvent[];
+    initializeNewsEngine: (apiKey: string) => Promise<void>;
+    // Methods
     setApiKey: (key: string) => void;
     setAccessToken: (token: string) => void;
     connect: () => Promise<void>;
@@ -47,16 +53,19 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [signals3m, setSignals3m] = useState<Signal[]>([]);
     const [signals5m, setSignals5m] = useState<Signal[]>([]);
     const [signals15m, setSignals15m] = useState<Signal[]>([]);
-    const [sentiment, setSentiment] = useState(50); // Default to Neutral (50)
+    const [sentiment, setSentiment] = useState(50);
     const [marketVitals, setMarketVitals] = useState<MarketVitals | null>(null);
     
     // Granular streaming controls
     const [isChartLive, setIsChartLive] = useState(false);
     const [isSignalFeedActive, setIsSignalFeedActive] = useState(false);
-
     const [isModalOpen, setIsModalOpen] = useState(false);
     
-    // For signal batching to prevent UI lag
+    // News Engine State
+    const [newsStatus, setNewsStatus] = useState<NewsEngineStatus>('inactive');
+    const [newsMessage, setNewsMessage] = useState('Provide API key to activate.');
+    const [newsEvents, setNewsEvents] = useState<NewsEvent[]>([]);
+
     const signalQueueRef = useRef<Signal[]>([]);
     const batchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -65,10 +74,8 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const processSignalQueue = useCallback(() => {
         if (signalQueueRef.current.length === 0) return;
-
         const signalsToProcess = [...signalQueueRef.current];
         signalQueueRef.current = [];
-
         setSignals3m(prev => [...signalsToProcess.filter(s => s.timeframe === '3m'), ...prev.slice(0, 99)]);
         setSignals5m(prev => [...signalsToProcess.filter(s => s.timeframe === '5m'), ...prev.slice(0, 99)]);
         setSignals15m(prev => [...signalsToProcess.filter(s => s.timeframe === '15m'), ...prev.slice(0, 99)]);
@@ -106,7 +113,7 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     
     const toggleSignalFeedActive = useCallback(() => {
         if (status === 'connected') {
-             if (!isSignalFeedActive) { // When turning on
+             if (!isSignalFeedActive) {
                 setSignals3m([]);
                 setSignals5m([]);
                 setSignals15m([]);
@@ -114,6 +121,18 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             setIsSignalFeedActive(prev => !prev);
         }
     }, [status, isSignalFeedActive]);
+
+    const initializeNewsEngine = useCallback(async (newsApiKey: string) => {
+        setNewsStatus('initializing');
+        setNewsMessage('Fetching economic calendar...');
+        try {
+            await apiInitializeNewsEngine(newsApiKey);
+            // Status will be updated via WebSocket
+        } catch (error: any) {
+            setNewsStatus('error');
+            setNewsMessage(error.message || 'Initialization failed.');
+        }
+    }, []);
 
     useEffect(() => {
         if (status === 'connected' || status === 'reconnecting') {
@@ -129,9 +148,7 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             const handleBrokerStatus = (brokerStatus: { status: ConnectionStatus, message: string }) => {
                 setStatus(brokerStatus.status);
                 setMessage(brokerStatus.message);
-                if (brokerStatus.status === 'connected' && isModalOpen) {
-                    closeModal();
-                }
+                if (brokerStatus.status === 'connected' && isModalOpen) closeModal();
                  if (brokerStatus.status !== 'connected') {
                     setIsChartLive(false);
                     setIsSignalFeedActive(false);
@@ -150,6 +167,12 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 setMarketVitals(vitals);
             };
 
+            const handleNewsStatus = (newsUpdate: NewsStatus) => {
+                setNewsStatus(newsUpdate.status);
+                setNewsMessage(newsUpdate.message);
+                setNewsEvents(newsUpdate.events);
+            };
+
             startLiveSignalStream({ 
                 onSignal: handleSignal, 
                 onTick: handleTick,
@@ -157,9 +180,9 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 onMarketStatus: handleMarketStatus,
                 onSentiment: handleSentiment,
                 onVitals: handleVitals,
+                onNewsStatus: handleNewsStatus,
             });
 
-            // Start batch processing timer
             if (!batchTimerRef.current) {
                 batchTimerRef.current = setInterval(processSignalQueue, 500);
             }
@@ -183,10 +206,11 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const value = {
         status, message, marketStatus, apiKey, accessToken, lastTick,
         signals3m, signals5m, signals15m,
-        sentiment,
-        marketVitals,
+        sentiment, marketVitals,
         isChartLive, isSignalFeedActive,
         isModalOpen,
+        newsStatus, newsMessage, newsEvents,
+        initializeNewsEngine,
         setApiKey, setAccessToken,
         connect, disconnect,
         toggleChartLive, toggleSignalFeedActive,

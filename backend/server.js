@@ -5,6 +5,11 @@ const { WebSocketServer } = require('ws');
 const cors = require('cors');
 const { Pool } = require('pg'); 
 const PriceActionEngine = require('./PriceActionEngine');
+const NewsEngine = require('./NewsEngine');
+
+// --- GLOBAL STATE ---
+// This simple global object allows decoupled engines to communicate.
+global.currentNewsEvent = null; // Controlled by NewsEngine, read by PriceActionEngine
 
 // --- DATABASE SETUP ---
 const db = new Pool({
@@ -82,8 +87,10 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 8080;
 
-console.log("Initializing Price Action Engine...");
-const engine = new PriceActionEngine(wss, db);
+console.log("Initializing Engines...");
+const priceActionEngine = new PriceActionEngine(wss, db);
+const newsEngine = new NewsEngine(wss);
+
 
 // --- WEBSOCKET CONNECTION ---
 wss.on('connection', (ws) => {
@@ -100,7 +107,7 @@ app.post('/api/broker/connect', async (req, res) => {
   }
   
   try {
-    await engine.connectToBroker(apiKey, accessToken);
+    await priceActionEngine.connectToBroker(apiKey, accessToken);
     res.status(200).json({ status: 'success', message: 'Successfully connected to broker.' });
   } catch (error) {
     console.error('Broker connection failed:', error.message);
@@ -117,9 +124,9 @@ app.post('/api/backtest', async (req, res) => {
     try {
         let results;
         if (mode === 'walk-forward') {
-            results = await engine.runWalkForwardAnalysis(req.body);
+            results = await priceActionEngine.runWalkForwardAnalysis(req.body);
         } else {
-            results = await engine.runHistoricalAnalysis(req.body);
+            results = await priceActionEngine.runHistoricalAnalysis(req.body);
         }
         res.status(200).json(results);
     } catch (error) {
@@ -157,7 +164,7 @@ app.post('/api/ml/analyze-signals', async (req, res) => {
     const analysisConfig = req.body;
     console.log('Received request to analyze signal performance with config:', analysisConfig);
     try {
-        const results = await engine.analyzeSignalPerformance(analysisConfig);
+        const results = await priceActionEngine.analyzeSignalPerformance(analysisConfig);
         res.status(200).json(results);
     } catch (error) {
         console.error("Signal performance analysis failed on server:", error);
@@ -177,13 +184,28 @@ app.post('/api/ml/suggest-strategy', async (req, res) => {
 
     console.log('Received request for AI strategy suggestions.');
     try {
-        const suggestions = await engine.getAIStrategySuggestions(backtestResults, apiKey);
+        const suggestions = await priceActionEngine.getAIStrategySuggestions(backtestResults, apiKey);
         res.status(200).json({ suggestions });
     } catch (error) {
         console.error("AI suggestion generation failed:", error.message);
         res.status(500).json({ status: 'error', message: error.message || 'Failed to get suggestions from AI.' });
     }
 });
+
+app.post('/api/news/initialize', async (req, res) => {
+    const { apiKey } = req.body;
+    if (!apiKey) {
+        return res.status(400).json({ status: 'error', message: 'Alpha Vantage API Key is required.' });
+    }
+    try {
+        await newsEngine.initializeForDay(apiKey);
+        res.status(200).json({ status: 'success', message: 'News Engine initialized and monitoring.' });
+    } catch (error) {
+        console.error("News Engine initialization failed:", error.message);
+        res.status(500).json({ status: 'error', message: error.message || 'Failed to initialize News Engine.' });
+    }
+});
+
 
 server.listen(PORT, async () => {
   console.log(`Server listening on port ${PORT}`);

@@ -420,11 +420,18 @@ class PriceActionEngine {
       if (convictionScore > 85 || isStrongConfluence) finalDirection = `STRONG_${consensusDirection}`;
       
       this.lastSignalPrice = candle.close;
-      return {
+      const signal = {
           time: candle.date || new Date().toISOString(), symbol: 'BANKNIFTY',
           price: parseFloat(candle.close.toFixed(2)), direction: finalDirection,
           rulesPassed, rulesFailed: Array.from(rulesFailedSet), conviction: convictionScore, timeframe,
       };
+
+      // News-Aware Tagging: Check global state before returning
+      if (global.currentNewsEvent) {
+          signal.triggeredDuringEvent = global.currentNewsEvent.name;
+      }
+
+      return signal;
   }
   
   _updateFeedbackLoop(newSignal) {
