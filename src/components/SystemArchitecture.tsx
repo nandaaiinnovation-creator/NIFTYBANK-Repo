@@ -17,6 +17,10 @@ const OverviewContent: React.FC = () => (
           <li>Live Broker Integration with Zerodha Kite API.</li>
           <li>Stateful Price Action Engine for real-time analysis.</li>
           <li>Database Persistence for all signals and configurations.</li>
+          <li>High-Performance Backtesting with smart caching.</li>
+          <li>Interactive ML Analysis with custom SL/TP strategies.</li>
+          <li>Dynamic, Real-Time Market Sentiment Gauge.</li>
+          <li>Resilient Charting with graceful library fallback.</li>
         </ul>
       </div>
       <div className="bg-zinc-950 p-2 border border-zinc-800 rounded-sm">
@@ -131,21 +135,21 @@ const SystemBlueprintContent: React.FC = () => {
                     <li><strong className="text-zinc-300">Live Market Connection:</strong> The system opens a direct, live connection (a WebSocket) to the broker (Zerodha) to receive every single price change—a "tick"—as it happens.</li>
                     <li><strong className="text-zinc-300">The Engine Analyzes:</strong> Our "Price Action Engine" is the brain of the backend. It listens to these ticks and builds them into candlesticks for different timeframes (3-min, 5-min, etc.).</li>
                     <li><strong className="text-zinc-300">Checking the Rules:</strong> At the close of each candle, the Engine checks it against a list of pre-defined trading rules (our strategy). For example: "Did the price break above yesterday's high?".</li>
-                    <li><strong className="text-zinc-300">Creating a Signal:</strong> If enough rules are met, the Engine generates a **BUY** or **SELL** signal, complete with a "conviction score" based on which rules passed.</li>
-                    <li><strong className="text-zinc-300">Instant Delivery:</strong> The signal is instantly sent from the backend to your screen, so you see it in real-time.</li>
+                    <li><strong className="text-zinc-300">Creating a Signal:</strong> If enough rules are met, the Engine generates a **BUY** or **SELL** signal, complete with a "conviction score" based on which rules passed. At the same time, it calculates a live **Market Sentiment** score based on recent signals.</li>
+                    <li><strong className="text-zinc-300">Instant Delivery:</strong> The signal and the new sentiment score are instantly sent from the backend to your screen, so you see it in real-time.</li>
                 </ol>
             </div>
 
             <div>
                  <SectionHeader icon="fa-backward-fast" title="Testing with Historical Data (Backtesting)" />
                  <P>The Backtesting Engine is like a time machine for our strategy. It lets us see how our rules would have performed on any day in the past.</P>
-                 <P>To make this fast, the system keeps a local library (a database cache) of past market data. When you run a test, it first checks this library. If any data is missing, it fetches it from the broker and saves it for next time. This "smart caching" makes future tests on the same period much faster.</P>
+                 <P>To keep the application fast and prevent crashes, only the results (like win rate) are sent back initially. The chart then intelligently loads only the visual data it needs, making even long backtests very efficient. It also uses a "smart caching" system to make future tests on the same period much faster.</P>
             </div>
 
             <div>
                  <SectionHeader icon="fa-user-tie" title="Learning from Past Performance (ML Feedback)" />
-                 <P>The "Performance Analysis" tool acts like a performance coach. It doesn't predict the future; it analyzes the immediate past to give us a data-driven feedback loop.</P>
-                 <P>It reviews all signals from the last 24 hours and checks what actually happened in the market afterward to see if they were profitable. It then creates a "Performance Report" showing the overall win rate and which of our trading rules are the most (and least) effective. This helps us improve the system's logic over time.</P>
+                 <P>The "Performance Analysis" tool acts like a performance coach. It analyzes signals from the last 24 hours to give us a data-driven feedback loop.</P>
+                 <P>You can even input your own **Stop Loss and Take Profit percentages** to see how the signals would have performed with your specific trading strategy. It then creates a "Performance Report" showing the overall win rate and which of our trading rules are the most (and least) effective.</P>
             </div>
             
             <div>
@@ -175,28 +179,24 @@ const TechnicalDeepDiveContent: React.FC = () => {
             <div>
                 <SectionHeader icon="fa-display" title="Frontend Architecture (React + TypeScript)" />
                 <SubHeader>Core State Management: <Code>BrokerContext</Code></SubHeader>
-                <P>The <Code>BrokerContext</Code> is the central nervous system of the frontend. It encapsulates all WebSocket communication logic and acts as a global state provider for broker status, market status, live ticks, and generated signals. This avoids prop-drilling and ensures all components have a single, consistent source of real-time data.</P>
+                <P>The <Code>BrokerContext</Code> is the central nervous system of the frontend. It encapsulates all WebSocket communication logic and acts as a global state provider for broker status, market status, live ticks, and generated signals. It features granular controls for live data streams and a signal batching mechanism to prevent UI lag.</P>
                 <SubHeader>Component Structure</SubHeader>
-                <P><Code>App.tsx</Code> provides the main layout shell (<Code>Navbar</Code>, <Code>Watchlist</Code>). The <Code>Dashboard.tsx</Code> component serves as the primary real-time view, consuming all its data from the <Code>BrokerContext</Code>. The <Code>TradingViewChart.tsx</Code> is a resilient component that gracefully handles the absence of its commercial library and has its own datafeed to fetch historical data from our backend.</P>
+                <P><Code>App.tsx</Code> provides the main layout shell (<Code>Navbar</Code>, <Code>Watchlist</Code>). The <Code>Dashboard.tsx</Code> component serves as the primary real-time view. The <Code>TradingViewChart.tsx</Code> is a resilient component that gracefully handles the absence of its commercial library by displaying a helpful placeholder instead of crashing the application.</P>
             </div>
             <div>
                 <SectionHeader icon="fa-server" title="Backend Architecture (Node.js + Express + WebSocket)" />
-                <SubHeader>Entry Point: <Code>server.js</Code></SubHeader>
-                <P>This file initializes the Express server for REST APIs, the <Code>ws</Code> WebSocket server for real-time communication, and establishes the PostgreSQL database connection.</P>
                 <SubHeader>The Core Engine: <Code>PriceActionEngine.js</Code></SubHeader>
-                <P>This is a stateful class that acts as the brain of the backend. A single instance manages the broker connection (<Code>KiteConnect</Code>, <Code>KiteTicker</Code>), processes all incoming market ticks, aggregates them into candles for multiple timeframes, and holds the current market state (e.g., Previous Day High/Low).</P>
+                <P>This is a stateful class that acts as the brain of the backend. A single instance manages the broker connection, processes all incoming market ticks, aggregates them into candles, and holds the current market state. It also now includes logic to calculate real-time market sentiment and has been standardized to use UTC for time-sensitive operations to prevent timezone-related bugs.</P>
             </div>
             <div>
                 <SectionHeader icon="fa-arrows-left-right-to-line" title="Communication Pipeline" />
                 <SubHeader>WebSocket Events (Real-time)</SubHeader>
-                <P>The backend pushes data to all connected clients via specific events: <Code>new_signal</Code>, <Code>market_tick</Code>, <Code>broker_status_update</Code>, and <Code>market_status_update</Code>.</P>
+                <P>The backend pushes data to all connected clients via specific events: <Code>new_signal</Code>, <Code>market_tick</Code>, <Code>broker_status_update</Code>, <Code>market_status_update</Code>, and <Code>market_sentiment_update</Code>.</P>
                 <SubHeader>REST APIs (Request/Response)</SubHeader>
-                <P>Used for non-real-time actions like <Code>POST /api/broker/connect</Code> to initiate the connection, and <Code>POST /api/backtest</Code> to trigger a historical analysis.</P>
+                <P>Used for non-real-time actions like <Code>POST /api/broker/connect</Code>, <Code>POST /api/backtest</Code>, and <Code>POST /api/ml/analyze-signals</Code> (which now accepts custom SL/TP parameters).</P>
             </div>
             <div>
                 <SectionHeader icon="fa-database" title="Database Schema & Caching Strategy" />
-                <SubHeader>Tables</SubHeader>
-                <P><Code>historical_candles</Code> caches all fetched historical data with a unique constraint to prevent duplicates. <Code>signals</Code> provides a permanent log of every live signal generated.</P>
                 <SubHeader>Smart Caching Mechanism</SubHeader>
                 <P>The <Code>_getHistoricalDataWithCache</Code> function is key to the backtesting engine's performance. It always attempts to fetch fresh data from the broker first. It then uses an efficient <Code>INSERT ... ON CONFLICT DO NOTHING</Code> query to merge this data into the local cache, filling any gaps. The backtest then runs against this complete local dataset. If the broker fetch fails, it gracefully falls back to using only the data already in the cache.</P>
             </div>
