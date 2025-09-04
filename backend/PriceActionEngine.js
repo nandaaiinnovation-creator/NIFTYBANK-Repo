@@ -202,11 +202,12 @@ class PriceActionEngine {
             }
         }
         if (!this.candles[tf] || (minute % interval === 0 && this.candles[tf].minute !== minute)) {
-            this.candles[tf] = { open: price, high: price, low: price, close: price, minute: minute };
+            this.candles[tf] = { open: price, high: price, low: price, close: price, minute: minute, date: tick.timestamp };
         } else {
             this.candles[tf].high = Math.max(this.candles[tf].high, price);
             this.candles[tf].low = Math.min(this.candles[tf].low, price);
             this.candles[tf].close = price;
+            this.candles[tf].date = tick.timestamp;
         }
     });
   }
@@ -233,7 +234,7 @@ class PriceActionEngine {
     this.lastSignalPrice = candle.close;
 
     return {
-      time: new Date(candle.date || Date.now()).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      time: candle.date || new Date().toISOString(),
       symbol: 'BANKNIFTY',
       price: parseFloat(candle.close.toFixed(2)),
       direction: direction,
@@ -246,18 +247,16 @@ class PriceActionEngine {
 
   // --- BACKTESTING LOGIC ---
 
-  async runHistoricalAnalysis(period, timeframe) {
+  async runHistoricalAnalysis(config) {
+    const { period, timeframe, from, to } = config;
     if (!this.kite) {
         throw new Error("Cannot run backtest: broker is not connected.");
     }
 
-    console.log(`Running historical analysis for ${period} on ${timeframe} timeframe...`);
-    const candles = await this._getHistoricalDataWithCache(period, timeframe);
+    console.log(`Running historical analysis for ${period || 'custom range'} on ${timeframe} timeframe...`);
+    
+    const { candles, dataSourceMessage } = await this._getHistoricalDataWithCache(config);
     const signals = [];
-
-    // To simulate pre-market data for each day in the test
-    let currentPDH = 0;
-    let currentPDL = 0;
 
     for (let i = 1; i < candles.length; i++) {
         const currentCandle = candles[i];
@@ -266,37 +265,52 @@ class PriceActionEngine {
         this.previousDayHigh = prevCandleAsDay.high;
         this.previousDayLow = prevCandleAsDay.low;
         
-        // Simple rule evaluation for backtesting
         const signal = this._evaluateRules(currentCandle, timeframe);
         if (signal) {
             signals.push({ ...signal, candleIndex: i });
         }
     }
     
-    // Reset live pre-market data after backtest
     await this._fetchPreMarketData(); 
     
-    console.log(`Backtest complete. Found ${signals.length} signals over ${candles.length} candles.`);
+    console.log(`Backtest found ${signals.length} signals over ${candles.length} candles.`);
+    
+    const metrics = this._calculatePerformanceMetrics(signals, candles);
+
+    const totalTrades = metrics.wins + metrics.losses;
+    const winRate = totalTrades > 0 ? ((metrics.wins / totalTrades) * 100).toFixed(1) + '%' : '0.0%';
+    const profitFactor = metrics.totalLoss > 0 ? (metrics.totalProfit / metrics.totalLoss).toFixed(2) : 'N/A';
+    const maxDrawdown = (metrics.maxDrawdown * 100).toFixed(2) + '%';
     
     return {
-        period,
-        timeframe,
-        candles: candles.map((c, index) => ({ id: index, ...c })), // Add ID for frontend key
+        period: period || 'Custom Range',
+        timeframe: timeframe,
+        candles: candles.map((c, index) => ({ id: index, ...c, date: c.date.toISOString() })),
         signals,
+        dataSourceMessage,
+        winRate,
+        profitFactor,
+        totalTrades,
+        maxDrawdown,
     };
   }
   
-  async _getHistoricalDataWithCache(period, timeframe) {
-    const { from, to } = this._getDateRangeFromPeriod(period);
+  async _getHistoricalDataWithCache(config) {
+    const { period, timeframe, from, to } = config;
+    const { fromDate, toDate } = this._getDateRange(period, from, to);
+    
     const timeframeMap = { '1m': 'minute', '3m': '3minute', '5m': '5minute', '15m': '15minute' };
     const kiteTimeframe = timeframeMap[timeframe];
     if (!kiteTimeframe) throw new Error("Invalid timeframe for Kite API.");
+    
+    let dataSourceMessage = '';
 
-    console.log(`Ensuring local data is up-to-date for ${timeframe} from ${from.toISOString()} to ${to.toISOString()}`);
+    console.log(`Ensuring local data is up-to-date for ${timeframe} from ${fromDate.toISOString()} to ${toDate.toISOString()}`);
 
     try {
-        const apiData = await this.kite.getHistoricalData(this.instrumentToken, kiteTimeframe, from, to);
+        const apiData = await this.kite.getHistoricalData(this.instrumentToken, kiteTimeframe, fromDate, toDate);
         console.log(`Fetched ${apiData.length} candles from Kite API for validation and caching.`);
+        dataSourceMessage = `Data validated with broker. ${apiData.length} fresh data points were used to update the local cache.`;
 
         if (apiData.length > 0) {
             const client = await this.db.connect();
@@ -315,14 +329,13 @@ class PriceActionEngine {
             } catch (e) {
                 await client.query('ROLLBACK');
                 console.error("Error caching historical data:", e);
-                // Don't throw here, we can still try to use what's in the DB
             } finally {
                 client.release();
             }
         }
     } catch (e) {
         console.error("Failed to fetch data from Kite API. Will proceed with locally cached data if available.", e.message);
-        // If API fails, we don't want the whole backtest to fail. We can rely on existing cache.
+        dataSourceMessage = `Could not fetch fresh data from broker. The backtest will run using only locally cached data.`;
     }
     
     console.log('Fetching complete dataset from local cache for analysis...');
@@ -331,7 +344,7 @@ class PriceActionEngine {
         WHERE instrument_token = $1 AND timeframe = $2 AND timestamp >= $3 AND timestamp <= $4
         ORDER BY timestamp ASC
     `;
-    const { rows } = await this.db.query(selectQuery, [this.instrumentToken, timeframe, from, to]);
+    const { rows } = await this.db.query(selectQuery, [this.instrumentToken, timeframe, fromDate, toDate]);
     
     if (rows.length === 0) {
         console.log('No historical data found locally or from API for this period.');
@@ -339,20 +352,186 @@ class PriceActionEngine {
     }
 
     console.log(`Proceeding to analysis with ${rows.length} candles from local cache.`);
-    return rows.map(r => ({ ...r, date: new Date(r.timestamp) }));
+    const candles = rows.map(r => ({ ...r, date: new Date(r.timestamp) }));
+    return { candles, dataSourceMessage };
   }
 
-  _getDateRangeFromPeriod(period) {
-      const to = new Date();
-      const from = new Date();
-      const [value, unit] = period.split(' ');
+  _getDateRange(period, from, to) {
+    if (from && to) {
+      // Used by TradingView chart which provides UNIX timestamps in seconds
+      return { fromDate: new Date(from * 1000), toDate: new Date(to * 1000) };
+    }
+    
+    // Used by manual backtesting UI
+    const toDate = new Date();
+    const fromDate = new Date();
+    const [value, unit] = period.split(' ');
+    const numValue = parseInt(value, 10);
 
-      if (unit.startsWith('month')) {
-          from.setMonth(to.getMonth() - parseInt(value, 10));
-      } else if (unit.startsWith('year')) {
-          from.setFullYear(to.getFullYear() - parseInt(value, 10));
+    if (unit.startsWith('month')) {
+        fromDate.setMonth(toDate.getMonth() - numValue);
+    } else if (unit.startsWith('year')) {
+        fromDate.setFullYear(toDate.getFullYear() - numValue);
+    }
+    return { fromDate, toDate };
+  }
+
+
+  // --- ML & PERFORMANCE ANALYSIS ---
+
+  _calculatePerformanceMetrics(signals, candles) {
+    let wins = 0;
+    let losses = 0;
+    let totalProfit = 0;
+    let totalLoss = 0;
+    
+    let equity = 100000;
+    let peakEquity = equity;
+    let maxDrawdown = 0;
+
+    signals.forEach(signal => {
+        const entryPrice = signal.price;
+        const entryIndex = signal.candleIndex;
+        const stopLoss = signal.direction === 'BUY' ? entryPrice * 0.995 : entryPrice * 1.005; // 0.5%
+        const takeProfit = signal.direction === 'BUY' ? entryPrice * 1.01 : entryPrice * 0.99; // 1%
+
+        let outcome = 'undetermined';
+        let exitPrice = entryPrice;
+
+        for (let i = entryIndex + 1; i < candles.length; i++) {
+            const candle = candles[i];
+            
+            if (signal.direction === 'BUY') {
+                if (candle.high >= takeProfit) { outcome = 'win'; exitPrice = takeProfit; break; }
+                if (candle.low <= stopLoss) { outcome = 'loss'; exitPrice = stopLoss; break; }
+            } else { // SELL
+                if (candle.low <= takeProfit) { outcome = 'win'; exitPrice = takeProfit; break; }
+                if (candle.high >= stopLoss) { outcome = 'loss'; exitPrice = stopLoss; break; }
+            }
+        }
+        
+        if (outcome === 'undetermined') {
+            exitPrice = candles[candles.length - 1].close;
+            outcome = (signal.direction === 'BUY' && exitPrice > entryPrice) || (signal.direction === 'SELL' && exitPrice < entryPrice) ? 'win' : 'loss';
+        }
+
+        const pnl = signal.direction === 'BUY' ? exitPrice - entryPrice : entryPrice - exitPrice;
+        const pnlPercentage = (pnl / entryPrice);
+        equity += equity * pnlPercentage;
+
+        if (equity > peakEquity) {
+            peakEquity = equity;
+        }
+
+        const drawdown = (peakEquity - equity) / peakEquity;
+        if (drawdown > maxDrawdown) {
+            maxDrawdown = drawdown;
+        }
+        
+        if (pnl > 0) {
+            wins++;
+            totalProfit += pnl;
+        } else {
+            losses++;
+            totalLoss += Math.abs(pnl);
+        }
+    });
+
+    return { wins, losses, totalProfit, totalLoss, peakEquity, maxDrawdown };
+  }
+
+  async analyzeSignalPerformance() {
+      console.log("Starting signal performance analysis...");
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+      // 1. Get all signals from the last 24 hours
+      const signalsQuery = `
+          SELECT *, price as signal_price, direction as signal_direction, rules_passed as signal_rules
+          FROM signals 
+          WHERE timestamp >= $1
+          ORDER BY timestamp ASC
+      `;
+      const { rows: signals } = await this.db.query(signalsQuery, [twentyFourHoursAgo]);
+      if (signals.length === 0) {
+          return { totalSignals: 0, wins: 0, losses: 0, winRate: "0.00%", rulePerformance: [] };
       }
-      return { from, to };
+      console.log(`Found ${signals.length} signals to analyze.`);
+      
+      // 2. Determine time range needed for historical data
+      const firstSignalTime = signals[0].timestamp;
+      const lastSignalTime = signals[signals.length - 1].timestamp;
+      const endTime = new Date(lastSignalTime.getTime() + 30 * 60 * 1000); // 30 mins after last signal
+
+      // 3. Get all 1-minute candles for the required period
+      const candlesQuery = `
+          SELECT timestamp, high, low 
+          FROM historical_candles 
+          WHERE instrument_token = $1 AND timeframe = '1m' AND timestamp >= $2 AND timestamp <= $3
+          ORDER BY timestamp ASC
+      `;
+      const { rows: candles } = await this.db.query(candlesQuery, [this.instrumentToken, firstSignalTime, endTime]);
+      if (candles.length === 0) {
+          throw new Error("Could not find historical candle data to validate signals.");
+      }
+      console.log(`Fetched ${candles.length} 1-min candles for validation.`);
+
+      let wins = 0;
+      let losses = 0;
+      const ruleStats = {}; // { "Rule Name": { wins: 0, losses: 0 } }
+
+      // 4. Iterate through each signal and determine outcome
+      for (const signal of signals) {
+          const entryPrice = parseFloat(signal.signal_price);
+          const stopLoss = signal.signal_direction === 'BUY' ? entryPrice * 0.995 : entryPrice * 1.005; // 0.5% SL
+          const takeProfit = signal.signal_direction === 'BUY' ? entryPrice * 1.01 : entryPrice * 0.99; // 1% TP
+
+          let outcome = 'undetermined'; // 'win', 'loss', or 'undetermined'
+
+          // Find candles that occurred after the signal
+          const subsequentCandles = candles.filter(c => c.timestamp > signal.timestamp);
+
+          for (const candle of subsequentCandles) {
+              const high = parseFloat(candle.high);
+              const low = parseFloat(candle.low);
+
+              if (signal.signal_direction === 'BUY') {
+                  if (high >= takeProfit) { outcome = 'win'; break; }
+                  if (low <= stopLoss) { outcome = 'loss'; break; }
+              } else { // SELL
+                  if (low <= takeProfit) { outcome = 'win'; break; }
+                  if (high >= stopLoss) { outcome = 'loss'; break; }
+              }
+          }
+          
+          if (outcome === 'win') {
+              wins++;
+              signal.signal_rules.forEach(rule => {
+                  if (!ruleStats[rule]) ruleStats[rule] = { wins: 0, losses: 0 };
+                  ruleStats[rule].wins++;
+              });
+          } else if (outcome === 'loss') {
+              losses++;
+               signal.signal_rules.forEach(rule => {
+                  if (!ruleStats[rule]) ruleStats[rule] = { wins: 0, losses: 0 };
+                  ruleStats[rule].losses++;
+              });
+          }
+      }
+
+      // 5. Format results
+      const totalSignals = wins + losses;
+      const winRate = totalSignals > 0 ? ((wins / totalSignals) * 100).toFixed(2) + '%' : '0.00%';
+      const rulePerformance = Object.entries(ruleStats).map(([rule, stats]) => {
+          const total = stats.wins + stats.losses;
+          return {
+              rule,
+              ...stats,
+              winRate: total > 0 ? ((stats.wins / total) * 100).toFixed(2) + '%' : '0.00%'
+          };
+      }).sort((a,b) => (b.wins + b.losses) - (a.wins + a.losses));
+
+      console.log("Analysis complete:", { totalSignals, wins, losses, winRate });
+      return { totalSignals, wins, losses, winRate, rulePerformance };
   }
 
 

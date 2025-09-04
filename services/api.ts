@@ -1,6 +1,11 @@
 import { SignalDirection } from '../types';
 import type { Signal, BacktestResults } from '../types';
-import type { CustomizableRule } from '../components/RuleCustomizer';
+// FIX: The import for `CustomizableRule` was removed because the source file is not a module.
+// A local definition is provided to resolve the type error.
+export interface CustomizableRule {
+  title: string;
+  enabled: boolean;
+}
 
 const API_BASE_URL = 'http://localhost:8080/api';
 const WS_URL = 'ws://localhost:8080';

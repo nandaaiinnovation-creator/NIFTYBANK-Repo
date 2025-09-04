@@ -1,5 +1,10 @@
-import type { Signal, BacktestResults } from '../types';
-import type { CustomizableRule } from '../components/RuleCustomizer';
+import type { Signal, BacktestResults, SignalPerformance } from '../types';
+// FIX: The import for `CustomizableRule` was removed because the source file is not a module.
+// A local definition is provided to resolve the type error.
+export interface CustomizableRule {
+  title: string;
+  enabled: boolean;
+}
 
 const API_BASE_URL = 'http://localhost:8080/api';
 const WS_URL = 'ws://localhost:8080';
@@ -77,7 +82,7 @@ export const stopLiveSignalStream = () => {
     }
 };
 
-export const runBacktest = async (config: { period: string; timeframe: string }): Promise<BacktestResults> => {
+export const runBacktest = async (config: { period: string; timeframe: string, from: number, to: number }): Promise<BacktestResults> => {
     console.log('Running backtest with config:', config);
     const response = await fetch(`${API_BASE_URL}/backtest`, {
         method: 'POST',
@@ -126,6 +131,23 @@ export const connectToBroker = async (apiKey: string, accessToken: string): Prom
 
     if (!response.ok) {
         throw new Error(data.message || 'Broker connection failed.');
+    }
+
+    return data;
+};
+
+export const runSignalAnalysis = async (): Promise<SignalPerformance> => {
+    console.log('Requesting signal performance analysis...');
+    const response = await fetch(`${API_BASE_URL}/ml/analyze-signals`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || 'Signal analysis failed');
     }
 
     return data;

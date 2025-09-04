@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import SectionCard from './SectionCard';
-import SignalCard from './SignalCard';
-import { SignalDirection } from '../types';
+// FIX: Updated import paths to point to the correct components inside the /src directory.
+import SignalCard from '../src/components/SignalCard';
+// FIX: Updated import path to point to the correct types inside the /src directory.
+import { SignalDirection } from '../src/types';
 
 // --- CONTENT FROM MLINTEGRATION ---
 const originalSignal = {
@@ -12,6 +13,8 @@ const originalSignal = {
   rulesPassed: ["Market Structure", "Volume Analysis", "IB Breakout"],
   rulesFailed: ["Component Divergence", "Momentum"],
   conviction: 68,
+  // FIX: Added timeframe property to match the Signal type from src/types.ts, required by SignalCard.
+  timeframe: '5m',
 };
 const mlEnhancedSignal = { ...originalSignal, conviction: 82 };
 
@@ -108,7 +111,12 @@ const MLIntelligence: React.FC = () => {
     );
 
     return (
-        <SectionCard title="ML Intelligence" iconClass="fa-solid fa-brain">
+        // FIX: Replaced SectionCard with a div wrapper and an inlined header to remove dependency on the non-existent component.
+        <div className="bg-zinc-900 border border-zinc-700 p-2">
+            <div className="flex items-center flex-shrink-0 mb-4">
+                <i className="fa-solid fa-brain text-md text-cyan-400 mr-2"></i>
+                <h2 className="text-md font-semibold text-white">ML Intelligence</h2>
+            </div>
             <div className="border-b border-gray-700">
                 <nav className="-mb-px flex gap-4" aria-label="Tabs">
                     <TabButton tabName="smart"><i className="fas fa-lightbulb mr-2"></i>Smart Signals</TabButton>
@@ -119,7 +127,7 @@ const MLIntelligence: React.FC = () => {
                 {activeTab === 'smart' && <SmartSignalsContent />}
                 {activeTab === 'predictive' && <PredictiveForecastsContent />}
             </div>
-        </SectionCard>
+        </div>
     );
 };
 

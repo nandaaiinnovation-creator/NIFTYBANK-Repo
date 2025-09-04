@@ -3,9 +3,9 @@ import type { TradingRule } from '../types';
 
 const RuleCard: React.FC<TradingRule> = ({ title, description }) => {
   return (
-    <div className="bg-gray-700/50 p-4 rounded-lg border border-gray-600 hover:bg-gray-700 transition-colors duration-200">
-      <h3 className="font-semibold text-white text-md mb-1">{title}</h3>
-      <p className="text-gray-400 text-sm">{description}</p>
+    <div className="bg-zinc-950 p-2 border border-zinc-800 rounded-sm hover:bg-zinc-800 transition-colors duration-200">
+      <h3 className="font-semibold text-white text-xs mb-1">{title}</h3>
+      <p className="text-zinc-400 text-xs">{description}</p>
     </div>
   );
 };

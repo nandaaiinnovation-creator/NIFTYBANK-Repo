@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import SectionCard from './SectionCard';
-import RuleCard from './RuleCard';
-import SignalCard from './SignalCard';
-import TechStackCard from './TechStackCard';
-import MockupDashboard from './MockupDashboard';
-import { tradingRules, frontendTech, backendTech, exampleSignal1, exampleSignal2 } from '../constants';
+// FIX: Updated import paths to point to the correct components inside the /src directory.
+import RuleCard from '../src/components/RuleCard';
+import SignalCard from '../src/components/SignalCard';
+import TechStackCard from '../src/components/TechStackCard';
+// FIX: Replaced non-existent MockupDashboard with the functional Dashboard component.
+import Dashboard from '../src/components/Dashboard';
+// FIX: Updated import path to point to the correct constants inside the /src directory.
+import { tradingRules, frontendTech, backendTech, exampleSignal1, exampleSignal2 } from '../src/constants';
 
 // --- CONTENT COMPONENTS ---
 const OverviewContent: React.FC = () => (
@@ -79,7 +81,8 @@ const SignalNotificationContent: React.FC = () => (
 const UIDesignContent: React.FC = () => (
     <>
         <p className="text-gray-400 mb-4">The UI will be designed with a "dark mode" theme, common in trading platforms to reduce eye strain. The focus is on clarity, usability, and quick information access. Key elements include a dashboard with the latest signal, market sentiment, and a log of recent signals.</p>
-        <MockupDashboard />
+        {/* FIX: Replaced non-existent MockupDashboard with the functional Dashboard component. */}
+        <Dashboard />
     </>
 );
 
@@ -250,7 +253,12 @@ const SystemArchitecture: React.FC = () => {
     const ActiveComponent = (architectureSections[activeCategory] as any)[activeSubCategory];
     
     return (
-        <SectionCard title="System Architecture" iconClass="fa-solid fa-sitemap">
+        // FIX: Replaced SectionCard with a div wrapper and an inlined header to remove dependency on the non-existent component.
+        <div className="bg-zinc-900 border border-zinc-700 p-2">
+            <div className="flex items-center flex-shrink-0 mb-4">
+                <i className="fa-solid fa-sitemap text-md text-cyan-400 mr-2"></i>
+                <h2 className="text-md font-semibold text-white">System Architecture</h2>
+            </div>
             <div className="flex flex-col md:flex-row gap-8">
                 <aside className="md:w-1/4">
                     <nav className="flex flex-col space-y-2">
@@ -285,7 +293,7 @@ const SystemArchitecture: React.FC = () => {
                     </div>
                 </main>
             </div>
-        </SectionCard>
+        </div>
     );
 };
 

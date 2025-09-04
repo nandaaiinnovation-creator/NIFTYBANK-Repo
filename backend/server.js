@@ -109,11 +109,11 @@ app.post('/api/broker/connect', async (req, res) => {
 
 
 app.post('/api/backtest', async (req, res) => {
-    const { period, timeframe } = req.body;
-    console.log(`Running backtest for period: ${period}, timeframe: ${timeframe}`);
+    const { period, timeframe, from, to } = req.body;
+    console.log(`Received backtest request with params:`, { period, timeframe, from, to });
     
     try {
-        const results = await engine.runHistoricalAnalysis(period, timeframe);
+        const results = await engine.runHistoricalAnalysis({ period, timeframe, from, to });
         res.status(200).json(results);
     } catch (error) {
         console.error("Backtest failed on server:", error.message);
@@ -144,6 +144,17 @@ app.post('/api/rules', async (req, res) => {
     console.error('Failed to save rules to database:', error);
     res.status(500).json({ status: 'error', message: 'Could not save configuration.' });
   }
+});
+
+app.post('/api/ml/analyze-signals', async (req, res) => {
+    console.log('Received request to analyze signal performance...');
+    try {
+        const results = await engine.analyzeSignalPerformance();
+        res.status(200).json(results);
+    } catch (error) {
+        console.error("Signal performance analysis failed on server:", error);
+        res.status(500).json({ status: 'error', message: error.message || 'An error occurred during signal analysis.' });
+    }
 });
 
 server.listen(PORT, async () => {

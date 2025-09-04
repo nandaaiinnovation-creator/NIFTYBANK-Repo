@@ -9,7 +9,7 @@ import { sections } from './constants';
 import BrokerConnectModal from './components/BrokerConnectModal';
 
 const App: React.FC = () => {
-  const [activeSection, setActiveSection] = useState<string>(sections[0].id);
+  const [activeSection, setActiveSection] = useState<string>('dashboard');
 
   const renderSectionContent = () => {
     switch (activeSection) {
@@ -27,12 +27,12 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="h-screen bg-zinc-900 text-gray-300 font-sans antialiased flex flex-col">
+    <div className="h-screen bg-zinc-950 text-gray-300 font-sans antialiased flex flex-col">
       <BrokerConnectModal />
       <Navbar />
       <div className="flex flex-1 overflow-hidden">
         <Watchlist activeSection={activeSection} setActiveSection={setActiveSection} />
-        <main className="flex-1 p-2 overflow-y-auto">
+        <main className="flex-1 p-2 overflow-y-auto bg-zinc-950">
           {renderSectionContent()}
         </main>
       </div>

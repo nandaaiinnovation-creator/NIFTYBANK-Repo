@@ -50,4 +50,24 @@ export interface BacktestResults {
     timeframe: string;
     candles: BacktestCandle[];
     signals: BacktestSignal[];
+    dataSourceMessage?: string;
+    winRate: string;
+    profitFactor: string;
+    totalTrades: number;
+    maxDrawdown: string;
+}
+
+export interface RulePerformance {
+    rule: string;
+    wins: number;
+    losses: number;
+    winRate: string;
+}
+
+export interface SignalPerformance {
+    totalSignals: number;
+    wins: number;
+    losses: number;
+    winRate: string;
+    rulePerformance: RulePerformance[];
 }
