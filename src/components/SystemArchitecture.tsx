@@ -116,7 +116,115 @@ const RecommendationsContent: React.FC = () => (
     </div>
 );
 
+const SystemBlueprintContent: React.FC = () => {
+    const SectionHeader: React.FC<{ icon: string; title: string }> = ({ icon, title }) => (
+        <h3 className="text-sm font-semibold text-white mb-2 flex items-center">
+            <i className={`fa-solid ${icon} mr-2 text-cyan-400`}></i>{title}
+        </h3>
+    );
+    const SubHeader: React.FC<{ children: React.ReactNode }> = ({ children }) => <h4 className="font-semibold text-white mt-3 mb-1 text-xs">{children}</h4>;
+    const P: React.FC<{ children: React.ReactNode }> = ({ children }) => <p className="text-zinc-400 text-xs mb-2 leading-relaxed">{children}</p>;
+    const Li: React.FC<{ children: React.ReactNode }> = ({ children }) => <li className="text-zinc-400 text-xs">{children}</li>;
+    const Code: React.FC<{ children: React.ReactNode }> = ({ children }) => <code className="text-cyan-300 bg-zinc-800 px-1 py-0.5 rounded-sm text-[10px] font-mono">{children}</code>;
+    
+    return (
+        <div className="space-y-4">
+            <P>This document provides a comprehensive architectural overview of the BankNIFTY Trading Signal Architect application, detailing its components, data flow, and core logic.</P>
+            
+            <div>
+                <SectionHeader icon="fa-cubes-stacked" title="Core Components & Technology Stack" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <SubHeader>Frontend</SubHeader>
+                        <ul className="list-disc list-inside space-y-1">
+                            <Li><Code>React & TypeScript</Code>: For a robust, type-safe, and interactive single-page application.</Li>
+                            <Li><Code>Tailwind CSS</Code>: For a utility-first, professional, and responsive UI design.</Li>
+                            <Li><Code>TradingView Library</Code>: For professional-grade, real-time financial charting.</Li>
+                        </ul>
+                    </div>
+                    <div>
+                        <SubHeader>Backend</SubHeader>
+                         <ul className="list-disc list-inside space-y-1">
+                            <Li><Code>Node.js & Express</Code>: A fast and efficient runtime for handling API requests and business logic.</Li>
+                            <Li><Code>WebSocket (ws)</Code>: Enables real-time, bidirectional communication for instant data delivery.</Li>
+                            <Li><Code>Zerodha Kite Connect</Code>: Official SDK for connecting to the broker's API and WebSocket feed.</Li>
+                        </ul>
+                    </div>
+                    <div>
+                         <SubHeader>Database</SubHeader>
+                         <ul className="list-disc list-inside space-y-1">
+                             <Li><Code>PostgreSQL</Code>: A powerful relational database for storing all generated signals and historical market data.</Li>
+                         </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <SectionHeader icon="fa-diagram-project" title="End-to-End Data Flow" />
+                <P>The system operates on a continuous, real-time data pipeline from the market to the user's screen.</P>
+                <ol className="list-decimal list-inside space-y-2 text-xs text-zinc-400">
+                    <li><Code>Data Ingestion</Code>: The backend's <Code>PriceActionEngine.js</Code> establishes a WebSocket connection to the Zerodha Kite API. It subscribes to live market ticks for the BankNIFTY instrument.</li>
+                    <li><Code>Backend Processing</Code>: Each incoming tick is processed by the engine. It updates the current price and contributes to building candlestick data for multiple timeframes (1m, 3m, 5m, 15m).</li>
+                    <li><Code>Rule Evaluation</Code>: On the close of a candle for a specific timeframe, the engine evaluates it against a set of predefined trading rules (e.g., "Previous Day Levels", "Volume Analysis").</li>
+                    <li><Code>Signal Generation</Code>: If enough rules pass, a BUY or SELL signal is generated. A conviction score is calculated based on the weight of the passed rules.</li>
+                    <li><Code>Data Persistence</Code>: The newly generated signal is immediately saved to the <Code>signals</Code> table in the PostgreSQL database.</li>
+                    <li><Code>Real-time Broadcast</Code>: The backend broadcasts the signal and the live market tick to all connected frontend clients via its own WebSocket server.</li>
+                    <li><Code>Frontend Display</Code>: The React frontend, listening via the <Code>BrokerContext</Code>, receives the new signal and instantly updates the UI, displaying it in the relevant signal log and plotting it on the TradingView chart.</li>
+                </ol>
+            </div>
+
+            <div>
+                <SectionHeader icon="fa-gears" title="Engine & Rule Logic" />
+                <P>The core logic resides in <Code>PriceActionEngine.js</Code>. It's a stateful service that maintains the current market context.</P>
+                <SubHeader>Candle Construction</SubHeader>
+                <P>The engine listens for individual ticks. It aggregates these ticks into candles for each defined timeframe. For example, for a '3m' candle, it will collect ticks for 3 minutes, then "close" the candle and begin a new one. This ensures analysis happens on structured, time-based data.</P>
+                <SubHeader>Rule Evaluation Logic</SubHeader>
+                <P>The <Code>_evaluateRules</Code> function is the brain of the signal generation. It takes a closed candle and checks it against conditions. For instance, the "Previous Day Levels" rule checks if the candle's closing price has crossed above the previous day's high or below the previous day's low. Each rule that passes contributes to the final conviction score.</P>
+            </div>
+
+            <div>
+                 <SectionHeader icon="fa-backward-fast" title="Backtesting & Caching" />
+                 <P>The backtesting engine simulates the trading logic on historical data to evaluate strategy performance.</P>
+                 <SubHeader>Smart Caching Strategy</SubHeader>
+                 <P>To balance speed and data accuracy, the engine uses a "cache-then-validate" approach. When a backtest is requested for a period:</P>
+                 <ol className="list-decimal list-inside space-y-2 text-xs text-zinc-400">
+                     <li>It first fetches the complete, official data for that period from the Zerodha API.</li>
+                     <li>It then uses an <Code>INSERT ... ON CONFLICT DO NOTHING</Code> query to efficiently update the local <Code>historical_candles</Code> table in PostgreSQL. This fills any gaps in the local cache without creating duplicates.</li>
+                     <li>Finally, the backtest simulation runs its analysis against the fast, local PostgreSQL database.</li>
+                 </ol>
+                 <P>This ensures the local cache becomes more complete over time and subsequent tests on overlapping periods are significantly faster. If the broker API is down, it gracefully falls back to using only the data available locally.</P>
+            </div>
+
+            <div>
+                 <SectionHeader icon="fa-brain" title="ML Intelligence & Feedback Loop" />
+                 <P>The current "ML Intelligence" section serves as a powerful, data-driven feedback mechanism for the rule-based engine.</P>
+                 <SubHeader>Performance Analysis</SubHeader>
+                 <P>The "Performance Analysis" feature is not a predictive model but a post-trade validation tool. When run, it:</P>
+                 <ol className="list-decimal list-inside space-y-2 text-xs text-zinc-400">
+                    <li>Queries the database for all signals generated in the last 24 hours.</li>
+                    <li>Fetches the 1-minute historical candle data for the period following each signal.</li>
+                    <li>Simulates each trade with a predefined Stop Loss (0.5%) and Take Profit (1%) to determine if it was a "Win" or a "Loss".</li>
+                    <li>Aggregates these results to calculate the overall strategy win rate and, crucially, the individual performance of each trading rule.</li>
+                 </ol>
+                 <P>This provides actionable insights, allowing the user to identify which rules are most effective and which may need tuning, thus closing the feedback loop on strategy development.</P>
+            </div>
+            
+            <div>
+                 <SectionHeader icon="fa-database" title="Data Storage" />
+                 <P>Data is stored in a PostgreSQL database, structured into several key tables:</P>
+                 <ul className="list-disc list-inside space-y-1 text-xs text-zinc-400">
+                     <li><Code>signals</Code>: Stores every generated signal, including the price, direction, conviction, and which rules passed or failed. This is the primary table for historical review.</li>
+                     <li><Code>historical_candles</Code>: Acts as a local cache for candlestick data fetched from the broker. This speeds up backtesting and historical chart loads.</li>
+                     <li><Code>user_rule_configurations</Code>: A table designed to store user-specific modifications to the trading rules (a feature planned for future work).</li>
+                 </ul>
+            </div>
+        </div>
+    );
+};
+
+
 const architectureSections = {
+    'System Blueprint': { 'Blueprint': <SystemBlueprintContent /> },
     'Introduction': { 'Overview': <OverviewContent /> },
     'System Design': { 'Trading Logic': <TradingLogicContent />, 'Tech Stack': <TechStackContent /> },
     'Implementation': { 'Backend': <BackendImplementationContent />, 'Deployment': <DeploymentGuideContent /> },
@@ -127,8 +235,8 @@ type Category = keyof typeof architectureSections;
 type AnySubCategory = { [K in Category]: keyof (typeof architectureSections)[K] }[Category];
 
 const SystemArchitecture: React.FC = () => {
-    const [activeCategory, setActiveCategory] = useState<Category>('Advanced Concepts');
-    const [activeSubCategory, setActiveSubCategory] = useState<AnySubCategory>('Future Recommendations');
+    const [activeCategory, setActiveCategory] = useState<Category>('System Blueprint');
+    const [activeSubCategory, setActiveSubCategory] = useState<AnySubCategory>('Blueprint');
 
     const handleCategoryClick = (category: Category) => {
         setActiveCategory(category);
