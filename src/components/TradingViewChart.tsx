@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, memo, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi, UTCTimestamp, LineStyle } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, UTCTimestamp, LineStyle, CandlestickData, SeriesMarker } from 'lightweight-charts';
 import { useBroker } from '../contexts/BrokerContext';
 import { runBacktest } from '../services/api';
 import type { Signal, BacktestCandle, BacktestSignal } from '../types';
@@ -12,31 +12,31 @@ interface TradingViewChartProps {
   onSignalClick?: (signal: BacktestSignal) => void;
 }
 
-const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData, signals = [], backtestConfig, onSignalClick }) => {
+const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData, signals = [], onSignalClick }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-    const [isLoading, setIsLoading] = useState(isLive); // Only show loading for live chart initial fetch
+    const [isLoading, setIsLoading] = useState(isLive);
 
     const { lastTick } = useBroker();
 
-    // Chart Creation and Cleanup
+    // Chart Initialization and Cleanup
     useEffect(() => {
         if (!chartContainerRef.current) return;
 
         const chart = createChart(chartContainerRef.current, {
             layout: {
-                background: { color: '#18181b' },
-                textColor: '#a1a1aa',
+                background: { color: '#18181b' }, // zinc-900
+                textColor: '#a1a1aa', // zinc-400
             },
             grid: {
-                vertLines: { color: '#27272a' },
-                horzLines: { color: '#27272a' },
+                vertLines: { color: '#27272a' }, // zinc-800
+                horzLines: { color: '#27272a' }, // zinc-800
             },
             timeScale: {
                 timeVisible: true,
                 secondsVisible: false,
-                borderColor: '#3f3f46',
+                borderColor: '#3f3f46', // zinc-700
             },
             crosshair: {
                 mode: 1, // Magnet
@@ -46,15 +46,14 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
         });
         chartRef.current = chart;
         seriesRef.current = chart.addCandlestickSeries({
-             upColor: '#22c55e',
-             downColor: '#ef4444',
+             upColor: '#22c55e', // green-500
+             downColor: '#ef4444', // red-500
              borderDownColor: '#ef4444',
              borderUpColor: '#22c55e',
              wickDownColor: '#ef4444',
              wickUpColor: '#22c55e',
         });
         
-        // Handle resizing
         const resizeObserver = new ResizeObserver(entries => {
             if (entries.length === 0 || entries[0].target !== chartContainerRef.current) { return; }
             const { width, height } = entries[0].contentRect;
@@ -62,10 +61,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
         });
         resizeObserver.observe(chartContainerRef.current);
 
-        // Handle clicks
         if (onSignalClick) {
             chart.subscribeClick(param => {
-                if (!param.time || !param.point || !signals) return;
+                if (!param.time || !param.point || !signals || signals.length === 0) return;
 
                 const clickedTime = param.time as UTCTimestamp;
                 let closestSignal: BacktestSignal | null = null;
@@ -89,16 +87,18 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
         
         return () => {
             resizeObserver.disconnect();
-            chart.remove();
+            if (chartRef.current) {
+                chartRef.current.remove();
+            }
         };
-    }, [onSignalClick]);
+    }, [onSignalClick, signals]);
 
     // Data Loading (Live and Backtest)
     useEffect(() => {
         const series = seriesRef.current;
         if (!series) return;
 
-        const formatCandles = (candles: BacktestCandle[]) => {
+        const formatCandles = (candles: BacktestCandle[]): CandlestickData[] => {
             return candles.map(c => ({
                 time: (new Date(c.date).getTime() / 1000) as UTCTimestamp,
                 open: c.open,
@@ -114,16 +114,16 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
                 try {
                     const to = new Date();
                     const from = new Date();
-                    from.setDate(to.getDate() - 2); // Fetch last 2 days for context
+                    from.setDate(to.getDate() - 2); 
                     const result = await runBacktest({
                         instrument: 'BANKNIFTY',
                         period: '',
-                        timeframe: '3m', // Default to 3m for live view
-                        from: from.getTime() / 1000,
-                        to: to.getTime() / 1000,
+                        timeframe: '3m',
+                        from: from.getTime(),
+                        to: to.getTime(),
                         tradeExitStrategy: 'stop',
                     });
-                    if (result.candles) {
+                    if (result.candles && result.candles.length > 0) {
                         series.setData(formatCandles(result.candles));
                     }
                 } catch (error) {
@@ -134,8 +134,12 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
             };
             fetchInitialData();
         } else if (initialData) {
-            series.setData(formatCandles(initialData));
-            chartRef.current?.timeScale().fitContent();
+            if(initialData.length > 0) {
+              series.setData(formatCandles(initialData));
+              chartRef.current?.timeScale().fitContent();
+            } else {
+              series.setData([]);
+            }
         }
     }, [isLive, initialData]);
 
@@ -152,13 +156,18 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
     // Signal Marker Updates
     useEffect(() => {
         const series = seriesRef.current;
-        if (!series || signals.length === 0) return;
+        if (!series) return;
 
-        const markers = signals.map(signal => ({
+        if (signals.length === 0) {
+            series.setMarkers([]);
+            return;
+        }
+
+        const markers: SeriesMarker<UTCTimestamp>[] = signals.map(signal => ({
             time: (new Date(signal.time).getTime() / 1000) as UTCTimestamp,
-            position: signal.direction.includes('BUY') ? 'belowBar' as const : 'aboveBar' as const,
+            position: signal.direction.includes('BUY') ? 'belowBar' : 'aboveBar',
             color: signal.direction.includes('BUY') ? '#22c55e' : '#ef4444',
-            shape: signal.direction.includes('BUY') ? 'arrowUp' as const : 'arrowDown' as const,
+            shape: signal.direction.includes('BUY') ? 'arrowUp' : 'arrowDown',
             text: signal.direction.replace('_', ' '),
             size: 1,
         }));
@@ -166,10 +175,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
 
     }, [signals]);
 
-     if (isLoading) {
+    if (isLoading && isLive) {
         return (
             <div className="w-full h-full flex items-center justify-center bg-zinc-900">
-                <p className="text-zinc-500 text-sm animate-pulse">Loading Chart Data...</p>
+                <p className="text-zinc-500 text-sm animate-pulse">Loading Live Chart Data...</p>
             </div>
         );
     }
