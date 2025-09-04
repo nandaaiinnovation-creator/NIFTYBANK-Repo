@@ -62,15 +62,7 @@ export interface RulePerformance {
     total: number;
 }
 
-export interface BacktestResults {
-    period: string;
-    instrument: string;
-    timeframe: string;
-    tradeExitStrategy: 'stop' | 'signal';
-    candles?: BacktestCandle[];
-    signals: BacktestSignal[];
-    dataSourceMessage?: string;
-    // Metrics
+export interface PerformanceMetrics {
     winRate: string;
     profitFactor: string;
     totalTrades: number;
@@ -82,6 +74,30 @@ export interface BacktestResults {
     avgLoss: number;
     equityCurve: EquityPoint[];
     rulePerformance: RulePerformance[];
+}
+
+export interface WalkForwardPeriodResult {
+    trainStart: string;
+    trainEnd: string;
+    testStart: string;
+    testEnd: string;
+    bestSl: number;
+    bestTp: number;
+    testMetrics: PerformanceMetrics;
+}
+
+
+export interface BacktestResults extends PerformanceMetrics {
+    period: string;
+    instrument: string;
+    timeframe: string;
+    tradeExitStrategy: 'stop' | 'signal';
+    candles?: BacktestCandle[];
+    signals: BacktestSignal[];
+    dataSourceMessage?: string;
+    // New optional fields for Walk-Forward mode
+    mode?: 'simple' | 'walk-forward';
+    walkForwardPeriods?: WalkForwardPeriodResult[];
 }
 
 export interface SignalPerformance {

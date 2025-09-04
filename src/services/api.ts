@@ -101,6 +101,12 @@ export const runBacktest = async (config: {
     tp?: number;
     instrument?: string;
     tradeExitStrategy: 'stop' | 'signal';
+    // New advanced params
+    mode?: 'simple' | 'walk-forward';
+    stopLossType?: 'percent' | 'atr';
+    atrMultiplier?: number;
+    walkForwardTrain?: number;
+    walkForwardTest?: number;
 }): Promise<BacktestResults> => {
     console.log('Running backtest with config:', config);
     const response = await fetch(`${API_BASE_URL}/backtest`, {

@@ -19,7 +19,7 @@ const initializeDatabase = async () => {
         timestamp TIMESTAMPTZ DEFAULT NOW(),
         symbol VARCHAR(50) NOT NULL,
         price NUMERIC(10, 2) NOT NULL,
-        direction VARCHAR(10) NOT NULL,
+        direction VARCHAR(20) NOT NULL,
         rules_passed TEXT[],
         rules_failed TEXT[],
         conviction INTEGER NOT NULL
@@ -75,7 +75,8 @@ db.connect()
 // --- SERVER SETUP ---
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Increase payload size limit
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -109,18 +110,24 @@ app.post('/api/broker/connect', async (req, res) => {
 
 
 app.post('/api/backtest', async (req, res) => {
-    const { period, timeframe, from, to, sl, tp, instrument, tradeExitStrategy } = req.body;
-    console.log(`Received backtest request for instrument: ${instrument || 'default'} with params:`, { period, timeframe, from, to, sl, tp, tradeExitStrategy });
+    const { mode = 'simple' } = req.body;
+    console.log(`Received backtest request with mode: ${mode}`);
+    console.log('Full backtest config:', req.body);
     
     try {
-        const results = await engine.runHistoricalAnalysis(req.body);
+        let results;
+        if (mode === 'walk-forward') {
+            results = await engine.runWalkForwardAnalysis(req.body);
+        } else {
+            results = await engine.runHistoricalAnalysis(req.body);
+        }
         res.status(200).json(results);
     } catch (error) {
-        console.error("Backtest failed on server:", error.message);
+        console.error(`Backtest failed on server (mode: ${mode}):`, error.message, error.stack);
         if (error.message.includes("broker is not connected")) {
              return res.status(400).json({ status: 'error', message: 'Broker is not connected. Please connect on the main dashboard first.' });
         }
-        res.status(500).json({ status: 'error', message: 'An error occurred during the backtest.' });
+        res.status(500).json({ status: 'error', message: error.message || 'An error occurred during the backtest.' });
     }
 });
 
