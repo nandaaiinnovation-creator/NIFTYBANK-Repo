@@ -84,8 +84,8 @@ class PriceActionEngine {
     this.atr = {};
     this.timeframes.forEach(tf => {
         this.lastSignalForFeedback[tf] = null;
-        this.rsi[tf] = { value: null, history: [] };
-        this.atr[tf] = null;
+        this.rsi[tf] = { value: 50, history: [] }; // Init RSI history
+        this.atr[tf] = { value: null };
     });
 
     // --- INTERNAL & CACHING ---
@@ -140,7 +140,8 @@ class PriceActionEngine {
     });
     this.timeframes.forEach(tf => {
         this.lastSignalForFeedback[tf] = null;
-        this.rsi[tf] = { value: null, history: [] };
+        this.rsi[tf] = { value: 50, history: [] };
+        this.atr[tf] = { value: null };
     });
     this.htfTrend = 'NEUTRAL';
     this.initialBalance = { high: 0, low: 0, set: false };
@@ -264,7 +265,7 @@ class PriceActionEngine {
         const interval = parseInt(tf.replace('m', ''));
         if (!this.candles[tf] || (minute % interval === 0 && this.candles[tf].minute !== minute)) {
             if (this.candles[tf]) {
-                const closedCandle = { ...this.candles[tf], volume: 0, date: this.candles[tf].date }; 
+                const closedCandle = { ...this.candles[tf], volume: 0, date: this.candles[tf].date }; // volume is placeholder for live
                 this.historicalCandlesForContext[tf].push(closedCandle);
                 if (this.historicalCandlesForContext[tf].length > 100) {
                     this.historicalCandlesForContext[tf].shift();
@@ -295,60 +296,55 @@ class PriceActionEngine {
   _evaluateRules(candle, timeframe, history) {
       if (history.length < 20) return null;
 
-      const bullishRulesPassed = [], bearishRulesPassed = [];
-      const allRules = Object.keys(this.baseRuleWeights);
-      
+      const results = {};
       const vix = this.marketVitals.vix;
       let marketRegime = 'Medium';
       if (vix < 15) marketRegime = 'Low';
       if (vix > 22) marketRegime = 'High';
       
       this._applyStrategicPlaybook(marketRegime);
-
       this._calculateRSI(history, 14, timeframe);
       this._calculateATR(history, 14, timeframe);
-
-      const addRule = (direction, name) => {
-        if (direction === 'bullish') bullishRulesPassed.push(name);
-        else if (direction === 'bearish') bearishRulesPassed.push(name);
-      };
       
-      const componentDivergence = this._checkComponentDivergence(candle);
-      if (componentDivergence) addRule(componentDivergence, "Component Divergence");
+      const addRuleResult = (name, direction) => { if(direction) results[name] = direction; };
 
-      const oiSignal = this._checkOptionsOiLevels(candle);
-      if (oiSignal) addRule(oiSignal, "Options OI Levels");
+      addRuleResult("Component Divergence", this._checkComponentDivergence(candle));
+      addRuleResult("Options OI Levels", this._checkOptionsOiLevels(candle));
+      addRuleResult("HTF Alignment", this._checkHTFAlignment(timeframe));
+      addRuleResult("Market Structure", this._checkMarketStructure(candle, history));
+      addRuleResult("Support & Resistance", this._checkSupportResistance(candle, timeframe));
+      addRuleResult("Initial Balance Breakout", this._checkInitialBalanceBreakout(candle));
+      addRuleResult("Previous Day Levels", this._checkPreviousDayLevels(candle));
+      addRuleResult("Volume Analysis", this._checkVolumeAnalysis(candle, history));
+      addRuleResult("Consolidation Breakout", this._checkConsolidationBreakout(candle, history, timeframe));
+      addRuleResult("Candlestick Patterns", this._checkCandlestickPatterns(candle, history));
+      addRuleResult("Momentum Divergence", this._checkMomentumDivergence(candle, history, timeframe));
 
-      const htfAlignment = this._checkHTFAlignment(timeframe);
-      if (htfAlignment) addRule(htfAlignment, "HTF Alignment");
+      const bullishRulesPassed = Object.keys(results).filter(r => results[r] === 'bullish');
+      const bearishRulesPassed = Object.keys(results).filter(r => results[r] === 'bearish');
+
+      let bullishScore = bullishRulesPassed.reduce((sum, rule) => sum + (this.dynamicRuleWeights[rule] || 0), 0);
+      let bearishScore = bearishRulesPassed.reduce((sum, rule) => sum + (this.dynamicRuleWeights[rule] || 0), 0);
       
-      const marketStructure = this._checkMarketStructure(candle, history);
-      if (marketStructure) addRule(marketStructure, "Market Structure");
-
-      const srSignal = this._checkSupportResistance(candle, timeframe);
-      if (srSignal) addRule(srSignal.direction, "Support & Resistance");
-      
-      const ibSignal = this._checkInitialBalanceBreakout(candle);
-      if (ibSignal) addRule(ibSignal, "Initial Balance Breakout");
-
-      // ... other rule calls ...
-
-      // --- FINAL SIGNAL DECISION ---
+      const convictionThreshold = 35; 
       let consensusDirection = null;
-      if (bullishRulesPassed.length > bearishRulesPassed.length + 1) consensusDirection = 'BUY';
-      else if (bearishRulesPassed.length > bearishRulesPassed.length + 1) consensusDirection = 'SELL';
+
+      if (bullishScore > bearishScore && bullishScore >= convictionThreshold) {
+          consensusDirection = 'BUY';
+      } else if (bearishScore > bullishScore && bearishScore >= convictionThreshold) {
+          consensusDirection = 'SELL';
+      }
       
       if (!consensusDirection) return null;
 
       const rulesPassed = consensusDirection === 'BUY' ? bullishRulesPassed : bearishRulesPassed;
       if (rulesPassed.length === 0) return null;
 
-      const rulesFailedSet = new Set(allRules);
+      const rulesFailedSet = new Set(Object.keys(this.baseRuleWeights));
       rulesPassed.forEach(rule => rulesFailedSet.delete(rule));
 
-      let convictionScore = 50;
-      rulesPassed.forEach(rule => { convictionScore += this.dynamicRuleWeights[rule] || 5; });
-      convictionScore = Math.min(98, Math.floor(convictionScore));
+      let convictionScore = Math.floor(Math.max(bullishScore, bearishScore));
+      convictionScore = Math.min(98, convictionScore);
       
       let finalDirection = consensusDirection;
       if (convictionScore > 85) finalDirection = `STRONG_${consensusDirection}`;
@@ -370,7 +366,7 @@ class PriceActionEngine {
   _handleNewSignal(signal) {
     try {
       const q = `INSERT INTO signals (symbol, price, direction, rules_passed, rules_failed, conviction) VALUES ($1,$2,$3,$4,$5,$6)`;
-      const vals = [signal.symbol, signal.price, signal.direction, signal.rules_passed, signal.rules_failed, signal.conviction];
+      const vals = [signal.symbol, signal.price, signal.direction, signal.rulesPassed, signal.rulesFailed, signal.conviction];
       this.db.query(q, vals).catch(err => console.warn("Failed to persist signal:", err.message));
     } catch (e) {
       console.warn("Signal persistence error:", e.message);
@@ -444,13 +440,22 @@ class PriceActionEngine {
   
   _checkSupportResistance(candle, timeframe) {
     const levels = [
-        this.previousDayHigh, this.previousDayLow, this.previousDayClose,
         this.marketVitals.open, this.initialBalance.high, this.initialBalance.low
     ].filter(l => l > 0);
-    const proximity = this.atr[timeframe] * 0.25 || candle.close * 0.001;
+    const proximity = this.atr[timeframe].value * 0.25 || candle.close * 0.001;
     for (const level of levels) {
-        if (Math.abs(candle.low - level) < proximity && candle.close > candle.open) return { direction: 'bullish' };
-        if (Math.abs(candle.high - level) < proximity && candle.close < candle.open) return { direction: 'bearish' };
+        if (Math.abs(candle.low - level) < proximity && candle.close > candle.open) return 'bullish';
+        if (Math.abs(candle.high - level) < proximity && candle.close < candle.open) return 'bearish';
+    }
+    return null;
+  }
+
+  _checkPreviousDayLevels(candle) {
+    const levels = [ this.previousDayHigh, this.previousDayLow, this.previousDayClose ].filter(l => l > 0);
+    const proximity = candle.high * 0.001; // Small proximity for daily levels
+    for (const level of levels) {
+      if (Math.abs(candle.low - level) < proximity && candle.close > candle.open) return 'bullish';
+      if (Math.abs(candle.high - level) < proximity && candle.close < candle.open) return 'bearish';
     }
     return null;
   }
@@ -467,6 +472,81 @@ class PriceActionEngine {
     if (this.htfTrend === 'UP') return 'bullish';
     if (this.htfTrend === 'DOWN') return 'bearish';
     return null;
+  }
+
+  _checkVolumeAnalysis(candle, history) {
+    if (!candle.volume || history.length < 20) return null;
+    const lookback = history.slice(-20, -1);
+    const avgVolume = lookback.reduce((sum, c) => sum + (c.volume || 0), 0) / lookback.length;
+    if (candle.volume > avgVolume * 2.0) {
+      return candle.close > candle.open ? 'bullish' : 'bearish';
+    }
+    return null;
+  }
+
+  _checkConsolidationBreakout(candle, history, timeframe) {
+    const lookbackPeriod = 10;
+    if (history.length < lookbackPeriod) return null;
+    const lookback = history.slice(-lookbackPeriod);
+    const range = Math.max(...lookback.map(c => c.high)) - Math.min(...lookback.map(c => c.low));
+    
+    // Consolidation is when range is less than average true range
+    const inConsolidation = range < this.atr[timeframe].value;
+
+    if (!inConsolidation) {
+      const breakoutLookback = history.slice(-3);
+      const breakoutHigh = Math.max(...breakoutLookback.map(c=>c.high));
+      const breakoutLow = Math.min(...breakoutLookback.map(c=>c.low));
+      if (candle.close > breakoutHigh) return 'bullish';
+      if (candle.close < breakoutLow) return 'bearish';
+    }
+    return null;
+  }
+  
+  _checkCandlestickPatterns(candle, history) {
+    if (history.length < 2) return null;
+    const prev = history[history.length - 2];
+    const body = Math.abs(candle.close - candle.open);
+    const prevBody = Math.abs(prev.close - prev.open);
+
+    // Engulfing
+    if (body > prevBody) {
+        if (candle.close > prev.high && candle.open < prev.low) return candle.close > candle.open ? 'bullish' : 'bearish';
+    }
+    // Pin Bar
+    const range = candle.high - candle.low;
+    if (range > 0 && body / range < 0.3) {
+      const lowerWick = candle.low - Math.min(candle.open, candle.close);
+      const upperWick = candle.high - Math.max(candle.open, candle.close);
+      if (lowerWick / range > 0.6) return 'bullish';
+      if (upperWick / range > 0.6) return 'bearish';
+    }
+    return null;
+  }
+  
+  _checkMomentumDivergence(candle, history, timeframe) {
+      if (history.length < 15 || this.rsi[timeframe].history.length < 15) return null;
+      
+      const priceLookback = history.slice(-15);
+      const rsiLookback = this.rsi[timeframe].history.slice(-15);
+
+      const priceLow = Math.min(...priceLookback.map(c => c.low));
+      const priceHigh = Math.max(...priceLookback.map(c => c.high));
+      
+      const lowRsiIndex = priceLookback.findIndex(c => c.low === priceLow);
+      const highRsiIndex = priceLookback.findIndex(c => c.high === priceHigh);
+
+      if (lowRsiIndex < 0 || highRsiIndex < 0) return null;
+
+      const rsiAtPriceLow = rsiLookback[lowRsiIndex];
+      const rsiAtPriceHigh = rsiLookback[highRsiIndex];
+
+      // Bullish Divergence: Price makes new low, RSI makes higher low.
+      if (candle.low < priceLow && this.rsi[timeframe].value > rsiAtPriceLow) return 'bullish';
+      // Bearish Divergence: Price makes new high, RSI makes lower high.
+      if (candle.high > priceHigh && this.rsi[timeframe].value < rsiAtPriceHigh) return 'bearish';
+      
+      return null;
   }
   
   _updateHTFTrend(history15m) {
@@ -526,7 +606,6 @@ class PriceActionEngine {
     const signals = [];
     const history = [];
 
-    // Reset state for this specific backtest run to ensure it's clean
     const originalHTF = this.htfTrend;
     this._resetDailyStats();
 
@@ -534,28 +613,17 @@ class PriceActionEngine {
         const candle = candles[i];
         history.push(candle);
         
-        // Maintain a rolling window for history to avoid performance degradation on large datasets
-        if (history.length > 150) {
-            history.shift();
-        }
+        if (history.length > 150) history.shift();
 
-        // Simplistic HTF simulation for backtesting. Assumes 15m trend is derived from the current history.
-        // A more complex implementation would involve resampling the base timeframe data into 15m candles.
-        if (timeframe !== '15m') {
-             this._updateHTFTrend(history);
-        }
-
+        if (timeframe !== '15m') this._updateHTFTrend(history);
         const signal = this._evaluateRules(candle, timeframe, history);
 
         if (signal) {
-            // Add candleIndex so the frontend knows where on the chart to place the marker
             signals.push({ ...signal, candleIndex: i });
         }
     }
     
-    // Restore live state
     this.htfTrend = originalHTF;
-
     console.log(`Backtest for timeframe ${timeframe} generated ${signals.length} signals.`);
     return signals;
   }
@@ -574,71 +642,46 @@ class PriceActionEngine {
     let entryTime = null;
     let entryIndex = -1;
 
-    // Helper to close a position and log the trade
     const closePosition = (exitPrice, exitTime) => {
         const pnl = currentPosition === 'LONG' ? exitPrice - entryPrice : entryPrice - exitPrice;
         equity += pnl;
 
         trades.push({
-            entryTime: entryTime,
-            exitTime: exitTime,
-            entryPrice: entryPrice,
-            exitPrice: exitPrice,
-            direction: currentPosition === 'LONG' ? 'BUY' : 'SELL',
-            pnl: pnl
+            entryTime: entryTime, exitTime: exitTime, entryPrice: entryPrice, exitPrice: exitPrice,
+            direction: currentPosition === 'LONG' ? 'BUY' : 'SELL', pnl: pnl
         });
         
-        equityCurve.push({
-            tradeNumber: trades.length,
-            equity: equity,
-            date: exitTime
-        });
+        equityCurve.push({ tradeNumber: trades.length, equity: equity, date: exitTime });
 
-        // Reset position state
-        currentPosition = null;
-        entryPrice = 0;
-        entryTime = null;
-        entryIndex = -1;
+        currentPosition = null; entryPrice = 0; entryTime = null; entryIndex = -1;
     };
 
     if (tradeExitStrategy === 'signal') {
         signals.forEach(signal => {
             const direction = signal.direction.includes('BUY') ? 'BUY' : 'SELL';
-
-            if (!currentPosition) { // No open position, so open one
+            if (!currentPosition) {
                 currentPosition = direction === 'BUY' ? 'LONG' : 'SHORT';
-                entryPrice = signal.price;
-                entryTime = signal.time;
-            } else if (currentPosition === 'LONG' && direction === 'SELL') { // In a LONG, close and reverse to SHORT
+                entryPrice = signal.price; entryTime = signal.time;
+            } else if (currentPosition === 'LONG' && direction === 'SELL') {
                 closePosition(signal.price, signal.time);
-                currentPosition = 'SHORT';
-                entryPrice = signal.price;
-                entryTime = signal.time;
-            } else if (currentPosition === 'SHORT' && direction === 'BUY') { // In a SHORT, close and reverse to LONG
+                currentPosition = 'SHORT'; entryPrice = signal.price; entryTime = signal.time;
+            } else if (currentPosition === 'SHORT' && direction === 'BUY') {
                 closePosition(signal.price, signal.time);
-                currentPosition = 'LONG';
-                entryPrice = signal.price;
-                entryTime = signal.time;
+                currentPosition = 'LONG'; entryPrice = signal.price; entryTime = signal.time;
             }
         });
     } else { // 'stop' (SL/TP) strategy
         signals.forEach(signal => {
-            if (currentPosition) return; // Only take a new signal if not already in a position
-
+            if (currentPosition) return;
             const direction = signal.direction.includes('BUY') ? 'BUY' : 'SELL';
             currentPosition = direction === 'BUY' ? 'LONG' : 'SHORT';
-            entryPrice = signal.price;
-            entryTime = signal.time;
-            entryIndex = signal.candleIndex;
+            entryPrice = signal.price; entryTime = signal.time; entryIndex = signal.candleIndex;
 
             const stopLossPrice = currentPosition === 'LONG' ? entryPrice * (1 - sl / 100) : entryPrice * (1 + sl / 100);
             const takeProfitPrice = currentPosition === 'LONG' ? entryPrice * (1 + tp / 100) : entryPrice * (1 - tp / 100);
             
-            // Look for an exit condition in subsequent candles
             for (let i = entryIndex + 1; i < candles.length; i++) {
-                const candle = candles[i];
-                let exitPrice = null;
-                
+                const candle = candles[i]; let exitPrice = null;
                 if (currentPosition === 'LONG') {
                     if (candle.low <= stopLossPrice) exitPrice = stopLossPrice;
                     else if (candle.high >= takeProfitPrice) exitPrice = takeProfitPrice;
@@ -646,41 +689,24 @@ class PriceActionEngine {
                     if (candle.high >= stopLossPrice) exitPrice = stopLossPrice;
                     else if (candle.low <= takeProfitPrice) exitPrice = takeProfitPrice;
                 }
-
-                if (exitPrice) {
-                    closePosition(exitPrice, candle.date);
-                    break; // Exit found, break inner loop to wait for the next signal
-                }
+                if (exitPrice) { closePosition(exitPrice, candle.date); break; }
             }
         });
     }
 
-    // --- Final Metrics Calculation ---
-    if (trades.length === 0) {
-        return { ...defaultMetrics, trades: [] };
-    }
+    if (trades.length === 0) return { ...defaultMetrics, trades: [] };
 
-    let totalWins = 0;
-    let grossProfit = 0;
-    let grossLoss = 0;
-    let peakEquity = 100000;
-    let maxDrawdown = 0;
+    let totalWins = 0, grossProfit = 0, grossLoss = 0, peakEquity = 100000, maxDrawdown = 0;
     
     equityCurve.forEach(point => {
         peakEquity = Math.max(peakEquity, point.equity);
         const drawdown = ((peakEquity - point.equity) / peakEquity) * 100;
-        if (drawdown > maxDrawdown) {
-            maxDrawdown = drawdown;
-        }
+        if (drawdown > maxDrawdown) maxDrawdown = drawdown;
     });
 
     trades.forEach(trade => {
-        if (trade.pnl > 0) {
-            totalWins++;
-            grossProfit += trade.pnl;
-        } else {
-            grossLoss += Math.abs(trade.pnl);
-        }
+        if (trade.pnl > 0) { totalWins++; grossProfit += trade.pnl; } 
+        else { grossLoss += Math.abs(trade.pnl); }
     });
     const totalLosses = trades.length - totalWins;
     const netProfit = grossProfit - grossLoss;
@@ -690,18 +716,10 @@ class PriceActionEngine {
     const avgLoss = totalLosses > 0 ? grossLoss / totalLosses : 0;
 
     return {
-        winRate: winRate.toFixed(2) + '%',
-        profitFactor: profitFactor === Infinity ? 'inf' : profitFactor.toFixed(2),
-        totalTrades: trades.length,
-        maxDrawdown: maxDrawdown.toFixed(2) + '%',
-        netProfit: netProfit,
-        totalWins: totalWins,
-        totalLosses: totalLosses,
-        avgWin: avgWin,
-        avgLoss: avgLoss,
-        equityCurve: equityCurve,
-        rulePerformance: [], // Note: Rule-specific performance tracking would require more complex logic
-        trades: trades,
+        winRate: winRate.toFixed(2) + '%', profitFactor: profitFactor === Infinity ? 'inf' : profitFactor.toFixed(2),
+        totalTrades: trades.length, maxDrawdown: maxDrawdown.toFixed(2) + '%', netProfit: netProfit,
+        totalWins: totalWins, totalLosses: totalLosses, avgWin: avgWin, avgLoss: avgLoss,
+        equityCurve: equityCurve, rulePerformance: [], trades: trades,
     };
   }
   
@@ -769,16 +787,42 @@ class PriceActionEngine {
   }
 
   _calculateRSI(history, period, timeframe) {
-    if (!Array.isArray(history) || history.length <= period) return;
-    const closes = history.map(c => c.close);
-    // ... complete RSI logic from original file
-    this.rsi[timeframe].value = 50; // Placeholder
+      if (history.length < period + 1) return;
+      
+      const closes = history.map(c => c.close);
+      const rsiState = this.rsi[timeframe];
+      
+      let gains = 0, losses = 0;
+      for (let i = closes.length - period; i < closes.length; i++) {
+        const diff = closes[i] - closes[i - 1];
+        if (diff > 0) gains += diff;
+        else losses += Math.abs(diff);
+      }
+      
+      const avgGain = gains / period;
+      const avgLoss = losses / period;
+
+      if (avgLoss === 0) {
+        rsiState.value = 100;
+      } else {
+        const rs = avgGain / avgLoss;
+        rsiState.value = 100 - (100 / (1 + rs));
+      }
+      rsiState.history.push(rsiState.value);
+      if (rsiState.history.length > 100) rsiState.history.shift();
   }
 
   _calculateATR(history, period, timeframe) {
-    if (!Array.isArray(history) || history.length <= period) return;
-     // ... complete ATR logic from original file
-    this.atr[timeframe] = 100; // Placeholder
+      if (history.length < period) return;
+      const lookback = history.slice(-period);
+      let trSum = 0;
+      for (let i = 1; i < lookback.length; i++) {
+          const c = lookback[i];
+          const p = lookback[i-1];
+          const tr = Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close));
+          trSum += tr;
+      }
+      this.atr[timeframe].value = trSum / period;
   }
 
   _checkMarketHours() {
@@ -794,8 +838,58 @@ class PriceActionEngine {
   }
 
   async _getHistoricalDataWithCache(config, instrumentToken) {
-    // Simplified for brevity
-    return { candles: [], dataSourceMessage: "Using cache." };
+    if (!this.kite) throw new Error("Cannot fetch historical data because broker is not connected.");
+
+    const { timeframe, period } = config;
+    const to = new Date();
+    const from = new Date();
+
+    if (period.includes('month')) from.setMonth(to.getMonth() - parseInt(period));
+    else if (period.includes('year')) from.setFullYear(to.getFullYear() - parseInt(period));
+    
+    // Check DB first
+    try {
+        const dbRes = await this.db.query(
+            `SELECT * FROM historical_candles 
+             WHERE instrument_token = $1 AND timeframe = $2 AND timestamp BETWEEN $3 AND $4 
+             ORDER BY timestamp ASC`,
+            [instrumentToken, timeframe, from, to]
+        );
+        if (dbRes.rows.length > 50) { // arbitrary threshold to consider cache valid
+            console.log(`Cache hit: Found ${dbRes.rows.length} candles in DB for ${period}.`);
+            return { candles: dbRes.rows.map(r => ({ ...r, date: new Date(r.timestamp) })), dataSourceMessage: "Using cache." };
+        }
+    } catch (e) { console.warn("DB cache check failed:", e.message); }
+    
+    // Fetch from API if not in DB
+    console.log(`Cache miss. Fetching ${period} of ${timeframe} data from API...`);
+    const apiCandles = await this.kite.getHistoricalData(instrumentToken, timeframe, from, to);
+    if (!apiCandles || apiCandles.length === 0) return { candles: [] };
+
+    // Asynchronously save to DB without waiting
+    (async () => {
+        const client = await this.db.connect();
+        try {
+            await client.query('BEGIN');
+            const query = `
+                INSERT INTO historical_candles (instrument_token, timeframe, timestamp, open, high, low, close, volume)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (instrument_token, timeframe, timestamp) DO NOTHING;
+            `;
+            for (const c of apiCandles) {
+                await client.query(query, [instrumentToken, timeframe, c.date, c.open, c.high, c.low, c.close, c.volume]);
+            }
+            await client.query('COMMIT');
+            console.log(`Successfully cached ${apiCandles.length} candles to DB.`);
+        } catch (e) {
+            await client.query('ROLLBACK');
+            console.error("Failed to cache candles:", e.message);
+        } finally {
+            client.release();
+        }
+    })();
+
+    return { candles: apiCandles, dataSourceMessage: "Fetched from API." };
   }
 
   _broadcast(message) {
