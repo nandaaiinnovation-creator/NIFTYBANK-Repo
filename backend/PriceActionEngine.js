@@ -42,6 +42,24 @@ const BNF_COMPONENT_TOKENS = {
 };
 const ALL_COMPONENT_TOKENS = Object.values(BNF_COMPONENT_TOKENS);
 
+// --- HELPER FOR PAGINATION ---
+function getChunkSizeDays(timeframe) {
+    switch(timeframe) {
+        case '1m':
+        case '3m':
+            return 55; // Safety margin for Kite's ~60-day limit
+        case '5m':
+        case '10m': // 10m is not used in UI but good to have
+            return 95; // Safety margin for Kite's ~100-day limit
+        case '15m':
+        case '30m':
+        case '60minute':
+            return 195; // Safety margin for Kite's ~200-day limit
+        default:
+            return 3000; // For 'day' timeframe, which has a very large limit
+    }
+}
+
 class PriceActionEngine {
   constructor(wss, db) {
     this.wss = wss;
@@ -837,15 +855,62 @@ class PriceActionEngine {
     }
   }
 
+  async _fetchPaginatedHistoricalData(instrumentToken, timeframe, from, to) {
+      console.log(`Fetching paginated data from ${from.toISOString()} to ${to.toISOString()}`);
+      let allCandles = [];
+      let currentFrom = new Date(from);
+      const chunkSizeDays = getChunkSizeDays(timeframe);
+
+      while (currentFrom < to) {
+          let currentTo = new Date(currentFrom);
+          currentTo.setDate(currentTo.getDate() + chunkSizeDays);
+          if (currentTo > to) {
+              currentTo = new Date(to);
+          }
+
+          console.log(`  Fetching chunk: ${currentFrom.toISOString()} to ${currentTo.toISOString()}`);
+          try {
+              const chunkCandles = await this.kite.getHistoricalData(instrumentToken, timeframe, currentFrom, currentTo);
+              if (chunkCandles && chunkCandles.length > 0) {
+                  allCandles = allCandles.concat(chunkCandles);
+              }
+              await delay(300); // Rate limit to be safe
+          } catch (error) {
+              console.error(`Failed to fetch chunk for ${timeframe} from ${currentFrom} to ${currentTo}:`, error.message);
+              throw new Error(`API fetch failed during pagination. ${error.message}`);
+          }
+
+          const nextFrom = new Date(currentTo);
+          nextFrom.setDate(nextFrom.getDate() + 1);
+          currentFrom = nextFrom;
+      }
+      
+      const uniqueCandles = Array.from(new Map(allCandles.map(c => [c.date.toISOString(), c])).values());
+      uniqueCandles.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      console.log(`Fetched a total of ${uniqueCandles.length} candles after pagination.`);
+      return uniqueCandles;
+  }
+
   async _getHistoricalDataWithCache(config, instrumentToken) {
     if (!this.kite) throw new Error("Cannot fetch historical data because broker is not connected.");
 
-    const { timeframe, period } = config;
-    const to = new Date();
-    const from = new Date();
-
-    if (period.includes('month')) from.setMonth(to.getMonth() - parseInt(period));
-    else if (period.includes('year')) from.setFullYear(to.getFullYear() - parseInt(period));
+    const { timeframe, period, from: fromTimestamp, to: toTimestamp } = config;
+    let to, from;
+    
+    if (fromTimestamp > 0 && toTimestamp > 0) {
+        from = new Date(fromTimestamp * 1000);
+        to = new Date(toTimestamp * 1000);
+        console.log(`Using custom date range from client: ${from.toISOString()} to ${to.toISOString()}`);
+    } else {
+        to = new Date();
+        from = new Date();
+        const num = parseInt(period) || 1;
+        if (period.includes('month')) from.setMonth(to.getMonth() - num);
+        else if (period.includes('year')) from.setFullYear(to.getFullYear() - num);
+        else from.setMonth(to.getMonth() - 1); // Default to 1 month
+        console.log(`Using period-based date range: Last ${period}`);
+    }
     
     // Check DB first
     try {
@@ -855,15 +920,15 @@ class PriceActionEngine {
              ORDER BY timestamp ASC`,
             [instrumentToken, timeframe, from, to]
         );
-        if (dbRes.rows.length > 50) { // arbitrary threshold to consider cache valid
-            console.log(`Cache hit: Found ${dbRes.rows.length} candles in DB for ${period}.`);
+        if (dbRes.rows.length > 50) {
+            console.log(`Cache hit: Found ${dbRes.rows.length} candles in DB.`);
             return { candles: dbRes.rows.map(r => ({ ...r, date: new Date(r.timestamp) })), dataSourceMessage: "Using cache." };
         }
     } catch (e) { console.warn("DB cache check failed:", e.message); }
     
     // Fetch from API if not in DB
-    console.log(`Cache miss. Fetching ${period} of ${timeframe} data from API...`);
-    const apiCandles = await this.kite.getHistoricalData(instrumentToken, timeframe, from, to);
+    console.log(`Cache miss. Fetching data from API for period: ${from.toLocaleDateString()} to ${to.toLocaleDateString()}`);
+    const apiCandles = await this._fetchPaginatedHistoricalData(instrumentToken, timeframe, from, to);
     if (!apiCandles || apiCandles.length === 0) return { candles: [] };
 
     // Asynchronously save to DB without waiting
