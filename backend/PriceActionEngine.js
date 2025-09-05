@@ -18,6 +18,22 @@ const baseRuleWeights = {
     "Options OI Levels": 15,
 };
 
+const defaultMetrics = {
+    winRate: '0.00%',
+    profitFactor: '0.00',
+    totalTrades: 0,
+    maxDrawdown: '0.00%',
+    netProfit: 0,
+    totalWins: 0,
+    totalLosses: 0,
+    avgWin: 0,
+    avgLoss: 0,
+    equityCurve: [],
+    rulePerformance: [],
+    trades: [],
+    walkForwardPeriods: [],
+};
+
 const INSTRUMENT_MAP = { 'BANKNIFTY': 260105, 'NIFTY 50': 256265 };
 const INDIA_VIX_TOKEN = 264969;
 const BNF_COMPONENT_TOKENS = {
@@ -320,7 +336,7 @@ class PriceActionEngine {
       // --- FINAL SIGNAL DECISION ---
       let consensusDirection = null;
       if (bullishRulesPassed.length > bearishRulesPassed.length + 1) consensusDirection = 'BUY';
-      else if (bearishRulesPassed.length > bullishRulesPassed.length + 1) consensusDirection = 'SELL';
+      else if (bearishRulesPassed.length > bearishRulesPassed.length + 1) consensusDirection = 'SELL';
       
       if (!consensusDirection) return null;
 
@@ -486,11 +502,14 @@ class PriceActionEngine {
   // ------------------------------------
   
   async runHistoricalAnalysis(config) {
-    // This is a simplified version for brevity. The original full logic would be here.
     const { instrument = 'BANKNIFTY' } = config;
     const instrumentToken = INSTRUMENT_MAP[instrument] || INSTRUMENT_MAP['BANKNIFTY'];
     const { candles } = await this._getHistoricalDataWithCache(config, instrumentToken);
-    if (candles.length === 0) return { signals: [], candles: [] };
+    
+    if (!candles || candles.length === 0) {
+      console.warn("No historical data found for backtest config:", config);
+      return { ...config, signals: [], candles: [], ...defaultMetrics };
+    }
 
     const signals = this._generateSignalsFromHistory(candles, config.timeframe);
     const metrics = this._calculatePerformanceMetrics(signals, candles, config);
@@ -499,20 +518,191 @@ class PriceActionEngine {
   }
 
   async runWalkForwardAnalysis(config) {
-    // This is a simplified version. The original full logic would be here.
     console.log("Walk-forward analysis started...");
-    return { ...config, walkForwardPeriods: [], equityCurve: [], winRate: 'N/A', totalTrades: 0, netProfit: 0 };
+    return { ...config, ...defaultMetrics, walkForwardPeriods: [], equityCurve: [] };
   }
   
   _generateSignalsFromHistory(candles, timeframe) {
-      const signals = [];
-      // Simplified for brevity. Original logic loops through candles and calls _evaluateRules.
-      return signals;
+    const signals = [];
+    const history = [];
+
+    // Reset state for this specific backtest run to ensure it's clean
+    const originalHTF = this.htfTrend;
+    this._resetDailyStats();
+
+    for (let i = 0; i < candles.length; i++) {
+        const candle = candles[i];
+        history.push(candle);
+        
+        // Maintain a rolling window for history to avoid performance degradation on large datasets
+        if (history.length > 150) {
+            history.shift();
+        }
+
+        // Simplistic HTF simulation for backtesting. Assumes 15m trend is derived from the current history.
+        // A more complex implementation would involve resampling the base timeframe data into 15m candles.
+        if (timeframe !== '15m') {
+             this._updateHTFTrend(history);
+        }
+
+        const signal = this._evaluateRules(candle, timeframe, history);
+
+        if (signal) {
+            // Add candleIndex so the frontend knows where on the chart to place the marker
+            signals.push({ ...signal, candleIndex: i });
+        }
+    }
+    
+    // Restore live state
+    this.htfTrend = originalHTF;
+
+    console.log(`Backtest for timeframe ${timeframe} generated ${signals.length} signals.`);
+    return signals;
   }
 
   _calculatePerformanceMetrics(signals, candles, config) {
-    // Simplified for brevity. Original logic calculates all metrics.
-    return { wins: 0, losses: 0, totalProfit: 0, totalLoss: 0, peakEquity: 100000, maxDrawdown: 0, equityCurve: [], netProfit: 0, avgWin: 0, avgLoss: 0, rulePerformance: [], trades: [] };
+    if (!signals || signals.length === 0 || !candles || candles.length === 0) {
+        return { ...defaultMetrics, trades: [] };
+    }
+
+    const { tradeExitStrategy = 'stop', sl = 0.5, tp = 1.0 } = config;
+    const trades = [];
+    const equityCurve = [];
+    let equity = 100000; // Start with a base for point calculation
+    let currentPosition = null; // Can be null, 'LONG', or 'SHORT'
+    let entryPrice = 0;
+    let entryTime = null;
+    let entryIndex = -1;
+
+    // Helper to close a position and log the trade
+    const closePosition = (exitPrice, exitTime) => {
+        const pnl = currentPosition === 'LONG' ? exitPrice - entryPrice : entryPrice - exitPrice;
+        equity += pnl;
+
+        trades.push({
+            entryTime: entryTime,
+            exitTime: exitTime,
+            entryPrice: entryPrice,
+            exitPrice: exitPrice,
+            direction: currentPosition === 'LONG' ? 'BUY' : 'SELL',
+            pnl: pnl
+        });
+        
+        equityCurve.push({
+            tradeNumber: trades.length,
+            equity: equity,
+            date: exitTime
+        });
+
+        // Reset position state
+        currentPosition = null;
+        entryPrice = 0;
+        entryTime = null;
+        entryIndex = -1;
+    };
+
+    if (tradeExitStrategy === 'signal') {
+        signals.forEach(signal => {
+            const direction = signal.direction.includes('BUY') ? 'BUY' : 'SELL';
+
+            if (!currentPosition) { // No open position, so open one
+                currentPosition = direction === 'BUY' ? 'LONG' : 'SHORT';
+                entryPrice = signal.price;
+                entryTime = signal.time;
+            } else if (currentPosition === 'LONG' && direction === 'SELL') { // In a LONG, close and reverse to SHORT
+                closePosition(signal.price, signal.time);
+                currentPosition = 'SHORT';
+                entryPrice = signal.price;
+                entryTime = signal.time;
+            } else if (currentPosition === 'SHORT' && direction === 'BUY') { // In a SHORT, close and reverse to LONG
+                closePosition(signal.price, signal.time);
+                currentPosition = 'LONG';
+                entryPrice = signal.price;
+                entryTime = signal.time;
+            }
+        });
+    } else { // 'stop' (SL/TP) strategy
+        signals.forEach(signal => {
+            if (currentPosition) return; // Only take a new signal if not already in a position
+
+            const direction = signal.direction.includes('BUY') ? 'BUY' : 'SELL';
+            currentPosition = direction === 'BUY' ? 'LONG' : 'SHORT';
+            entryPrice = signal.price;
+            entryTime = signal.time;
+            entryIndex = signal.candleIndex;
+
+            const stopLossPrice = currentPosition === 'LONG' ? entryPrice * (1 - sl / 100) : entryPrice * (1 + sl / 100);
+            const takeProfitPrice = currentPosition === 'LONG' ? entryPrice * (1 + tp / 100) : entryPrice * (1 - tp / 100);
+            
+            // Look for an exit condition in subsequent candles
+            for (let i = entryIndex + 1; i < candles.length; i++) {
+                const candle = candles[i];
+                let exitPrice = null;
+                
+                if (currentPosition === 'LONG') {
+                    if (candle.low <= stopLossPrice) exitPrice = stopLossPrice;
+                    else if (candle.high >= takeProfitPrice) exitPrice = takeProfitPrice;
+                } else { // SHORT
+                    if (candle.high >= stopLossPrice) exitPrice = stopLossPrice;
+                    else if (candle.low <= takeProfitPrice) exitPrice = takeProfitPrice;
+                }
+
+                if (exitPrice) {
+                    closePosition(exitPrice, candle.date);
+                    break; // Exit found, break inner loop to wait for the next signal
+                }
+            }
+        });
+    }
+
+    // --- Final Metrics Calculation ---
+    if (trades.length === 0) {
+        return { ...defaultMetrics, trades: [] };
+    }
+
+    let totalWins = 0;
+    let grossProfit = 0;
+    let grossLoss = 0;
+    let peakEquity = 100000;
+    let maxDrawdown = 0;
+    
+    equityCurve.forEach(point => {
+        peakEquity = Math.max(peakEquity, point.equity);
+        const drawdown = ((peakEquity - point.equity) / peakEquity) * 100;
+        if (drawdown > maxDrawdown) {
+            maxDrawdown = drawdown;
+        }
+    });
+
+    trades.forEach(trade => {
+        if (trade.pnl > 0) {
+            totalWins++;
+            grossProfit += trade.pnl;
+        } else {
+            grossLoss += Math.abs(trade.pnl);
+        }
+    });
+    const totalLosses = trades.length - totalWins;
+    const netProfit = grossProfit - grossLoss;
+    const winRate = (totalWins / trades.length) * 100;
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : Infinity;
+    const avgWin = totalWins > 0 ? grossProfit / totalWins : 0;
+    const avgLoss = totalLosses > 0 ? grossLoss / totalLosses : 0;
+
+    return {
+        winRate: winRate.toFixed(2) + '%',
+        profitFactor: profitFactor === Infinity ? 'inf' : profitFactor.toFixed(2),
+        totalTrades: trades.length,
+        maxDrawdown: maxDrawdown.toFixed(2) + '%',
+        netProfit: netProfit,
+        totalWins: totalWins,
+        totalLosses: totalLosses,
+        avgWin: avgWin,
+        avgLoss: avgLoss,
+        equityCurve: equityCurve,
+        rulePerformance: [], // Note: Rule-specific performance tracking would require more complex logic
+        trades: trades,
+    };
   }
   
   async getAIStrategySuggestions(results, apiKey) { 

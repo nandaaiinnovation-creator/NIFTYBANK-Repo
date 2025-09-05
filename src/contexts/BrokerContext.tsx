@@ -67,10 +67,9 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [newsEvents, setNewsEvents] = useState<NewsEvent[]>([]);
 
     const signalQueueRef = useRef<Signal[]>([]);
-    const batchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const openModal = () => setIsModalOpen(true);
-    const closeModal = () => setIsModalOpen(false);
+    const openModal = useCallback(() => setIsModalOpen(true), []);
+    const closeModal = useCallback(() => setIsModalOpen(false), []);
 
     const processSignalQueue = useCallback(() => {
         if (signalQueueRef.current.length === 0) return;
@@ -134,74 +133,79 @@ export const BrokerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
     }, []);
 
+    // Refs to hold the latest state for use in WebSocket handlers, avoiding stale closures.
+    const isSignalFeedActiveRef = useRef(isSignalFeedActive);
+    const isChartLiveRef = useRef(isChartLive);
+    const isModalOpenRef = useRef(isModalOpen);
+
+    // This effect updates the refs whenever the state changes.
     useEffect(() => {
-        if (status === 'connected' || status === 'reconnecting') {
-             const handleSignal = (newSignal: Signal) => {
-                 if (!isSignalFeedActive) return;
-                 signalQueueRef.current.push(newSignal);
-            };
-            const handleTick = (newTick: MarketTick) => {
-                if (!isChartLive) return;
+        isSignalFeedActiveRef.current = isSignalFeedActive;
+        isChartLiveRef.current = isChartLive;
+        isModalOpenRef.current = isModalOpen;
+    });
+
+    // This effect runs only ONCE on mount to establish the WebSocket connection and timer.
+    useEffect(() => {
+        const handleSignal = (newSignal: Signal) => {
+            if (isSignalFeedActiveRef.current) {
+                signalQueueRef.current.push(newSignal);
+            }
+        };
+        const handleTick = (newTick: MarketTick) => {
+            if (isChartLiveRef.current) {
                 setLastTick(newTick);
-            };
-            
-            const handleBrokerStatus = (brokerStatus: { status: ConnectionStatus, message: string }) => {
-                setStatus(brokerStatus.status);
-                setMessage(brokerStatus.message);
-                if (brokerStatus.status === 'connected' && isModalOpen) closeModal();
-                 if (brokerStatus.status !== 'connected') {
-                    setIsChartLive(false);
-                    setIsSignalFeedActive(false);
-                }
-            };
-
-            const handleMarketStatus = (marketStatus: { status: MarketStatus }) => {
-                setMarketStatus(marketStatus.status);
-            };
-            
-            const handleSentiment = (sentimentPayload: { score: number }) => {
-                setSentiment(sentimentPayload.score);
-            };
-
-            const handleVitals = (vitals: MarketVitals) => {
-                setMarketVitals(vitals);
-            };
-
-            const handleNewsStatus = (newsUpdate: NewsStatus) => {
-                setNewsStatus(newsUpdate.status);
-                setNewsMessage(newsUpdate.message);
-                setNewsEvents(newsUpdate.events);
-            };
-
-            startLiveSignalStream({ 
-                onSignal: handleSignal, 
-                onTick: handleTick,
-                onBrokerStatus: handleBrokerStatus,
-                onMarketStatus: handleMarketStatus,
-                onSentiment: handleSentiment,
-                onVitals: handleVitals,
-                onNewsStatus: handleNewsStatus,
-            });
-
-            if (!batchTimerRef.current) {
-                batchTimerRef.current = setInterval(processSignalQueue, 500);
             }
-        } else {
-            stopLiveSignalStream();
-            if (batchTimerRef.current) {
-                clearInterval(batchTimerRef.current);
-                batchTimerRef.current = null;
+        };
+        
+        const handleBrokerStatus = (brokerStatus: { status: ConnectionStatus, message: string }) => {
+            setStatus(brokerStatus.status);
+            setMessage(brokerStatus.message);
+            if (brokerStatus.status === 'connected' && isModalOpenRef.current) {
+                closeModal();
             }
-        }
+            if (brokerStatus.status !== 'connected') {
+                setIsChartLive(false);
+                setIsSignalFeedActive(false);
+            }
+        };
 
+        const handleMarketStatus = (marketStatus: { status: MarketStatus }) => {
+            setMarketStatus(marketStatus.status);
+        };
+        
+        const handleSentiment = (sentimentPayload: { score: number }) => {
+            setSentiment(sentimentPayload.score);
+        };
+
+        const handleVitals = (vitals: MarketVitals) => {
+            setMarketVitals(vitals);
+        };
+
+        const handleNewsStatus = (newsUpdate: NewsStatus) => {
+            setNewsStatus(newsUpdate.status);
+            setNewsMessage(newsUpdate.message);
+            setNewsEvents(newsUpdate.events);
+        };
+
+        startLiveSignalStream({ 
+            onSignal: handleSignal, 
+            onTick: handleTick,
+            onBrokerStatus: handleBrokerStatus,
+            onMarketStatus: handleMarketStatus,
+            onSentiment: handleSentiment,
+            onVitals: handleVitals,
+            onNewsStatus: handleNewsStatus,
+        });
+
+        const batchTimer = setInterval(processSignalQueue, 500);
+
+        // Cleanup on unmount
         return () => {
             stopLiveSignalStream();
-            if (batchTimerRef.current) {
-                clearInterval(batchTimerRef.current);
-                batchTimerRef.current = null;
-            }
-        }
-    }, [status, isSignalFeedActive, isChartLive, isModalOpen, processSignalQueue]);
+            clearInterval(batchTimer);
+        };
+    }, [processSignalQueue, closeModal]); // Dependencies are stable, so this runs once.
 
     const value = {
         status, message, marketStatus, apiKey, accessToken, lastTick,
