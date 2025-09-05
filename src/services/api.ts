@@ -1,4 +1,4 @@
-import type { Signal, BacktestResults, SignalPerformance, AISuggestion, MarketVitals, NewsStatus } from '../types';
+import type { Signal, BacktestResults, SignalPerformance, AISuggestion, MarketVitals, NewsStatus, NewsEvent } from '../types';
 // FIX: The import for `CustomizableRule` was removed because the source file is not a module.
 // A local definition is provided to resolve the type error.
 export interface CustomizableRule {
