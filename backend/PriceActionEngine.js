@@ -4,6 +4,15 @@ const { KiteConnect } = require("kiteconnect");
 const { KiteTicker } = require("kiteconnect");
 const { setTimeout: delay } = require('timers/promises');
 
+// FIX: Map UI-friendly timeframes to the specific strings required by the Kite Connect API.
+const KITE_TIMEFRAME_MAP = {
+    '1m': 'minute',
+    '3m': '3minute',
+    '5m': '5minute',
+    '15m': '15minute',
+    'day': 'day' // For completeness
+};
+
 const baseRuleWeights = {
     "HTF Alignment": 20,
     "Market Structure": 10,
@@ -856,7 +865,9 @@ class PriceActionEngine {
   }
 
   async _fetchPaginatedHistoricalData(instrumentToken, timeframe, from, to) {
-      console.log(`Fetching paginated data from ${from.toISOString()} to ${to.toISOString()}`);
+      const apiTimeframe = KITE_TIMEFRAME_MAP[timeframe] || timeframe;
+      console.log(`Fetching paginated data for timeframe ${timeframe} (API: ${apiTimeframe}) from ${from.toISOString()} to ${to.toISOString()}`);
+      
       let allCandles = [];
       let currentFrom = new Date(from);
       const chunkSizeDays = getChunkSizeDays(timeframe);
@@ -870,7 +881,7 @@ class PriceActionEngine {
 
           console.log(`  Fetching chunk: ${currentFrom.toISOString()} to ${currentTo.toISOString()}`);
           try {
-              const chunkCandles = await this.kite.getHistoricalData(instrumentToken, timeframe, currentFrom, currentTo);
+              const chunkCandles = await this.kite.getHistoricalData(instrumentToken, apiTimeframe, currentFrom, currentTo);
               if (chunkCandles && chunkCandles.length > 0) {
                   allCandles = allCandles.concat(chunkCandles);
               }
