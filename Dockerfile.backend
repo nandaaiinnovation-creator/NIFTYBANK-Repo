@@ -1,0 +1,27 @@
+# Stage 1: Install dependencies to leverage caching
+FROM node:18-alpine AS deps
+
+WORKDIR /app
+
+# Copy package.json from the backend directory
+COPY backend/package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Stage 2: Build production image
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy installed dependencies from the 'deps' stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy the backend source code
+COPY backend/ ./
+
+# Expose the port the server listens on
+EXPOSE 8080
+
+# The command to run the application
+CMD ["node", "server.js"]

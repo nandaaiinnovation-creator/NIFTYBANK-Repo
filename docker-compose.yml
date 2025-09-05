@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Backend Node.js Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  # Frontend React Service (served by Nginx)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # PostgreSQL Database Service
+  db:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
