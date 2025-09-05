@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, memo, useState } from 'react';
-// FIX: Swapped UTCTimestamp for Time to resolve type conflicts with older lightweight-charts versions.
-// FIX: Use the specific ICandlestickSeriesApi interface to ensure methods like addCandlestickSeries and setMarkers are available.
-import { createChart, IChartApi, ICandlestickSeriesApi, Time, LineStyle, CandlestickData, SeriesMarker } from 'lightweight-charts';
+// FIX: Changed to a namespace import to resolve TypeScript errors where methods like 'addCandlestickSeries' and 'setMarkers' were not being found on their respective types. This can happen with certain module resolution strategies.
+import * as LightweightCharts from 'lightweight-charts';
 import { useBroker } from '../contexts/BrokerContext';
 import { runBacktest } from '../services/api';
 import type { Signal, BacktestCandle, BacktestSignal } from '../types';
@@ -16,9 +15,8 @@ interface TradingViewChartProps {
 
 const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData, signals = [], onSignalClick }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
-    const chartRef = useRef<IChartApi | null>(null);
-    // FIX: Use the more specific ICandlestickSeriesApi type for better type inference and method availability.
-    const seriesRef = useRef<ICandlestickSeriesApi | null>(null);
+    const chartRef = useRef<LightweightCharts.IChartApi | null>(null);
+    const seriesRef = useRef<LightweightCharts.ISeriesApi<'Candlestick'> | null>(null);
     const [isLoading, setIsLoading] = useState(isLive);
 
     const { lastTick } = useBroker();
@@ -27,7 +25,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
     useEffect(() => {
         if (!chartContainerRef.current) return;
 
-        const chart = createChart(chartContainerRef.current, {
+        const chart = LightweightCharts.createChart(chartContainerRef.current, {
             layout: {
                 background: { color: '#18181b' }, // zinc-900
                 textColor: '#a1a1aa', // zinc-400
@@ -43,8 +41,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
             },
             crosshair: {
                 mode: 1, // Magnet
-                vertLine: { style: LineStyle.Dotted, color: '#a1a1aa' },
-                horzLine: { style: LineStyle.Dotted, color: '#a1a1aa' },
+                vertLine: { style: LightweightCharts.LineStyle.Dotted, color: '#a1a1aa' },
+                horzLine: { style: LightweightCharts.LineStyle.Dotted, color: '#a1a1aa' },
             },
         });
         chartRef.current = chart;
@@ -101,10 +99,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
         const series = seriesRef.current;
         if (!series) return;
 
-        const formatCandles = (candles: BacktestCandle[]): CandlestickData[] => {
+        const formatCandles = (candles: BacktestCandle[]): LightweightCharts.CandlestickData[] => {
             return candles.map(c => ({
-                // FIX: Cast to Time instead of UTCTimestamp
-                time: (new Date(c.date).getTime() / 1000) as Time,
+                time: (new Date(c.date).getTime() / 1000) as LightweightCharts.Time,
                 open: c.open,
                 high: c.high,
                 low: c.low,
@@ -151,8 +148,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
     useEffect(() => {
         if (isLive && lastTick && seriesRef.current) {
             seriesRef.current.update({
-                // FIX: Cast to Time instead of UTCTimestamp
-                time: (new Date(lastTick.time).getTime() / 1000) as Time,
+                time: (new Date(lastTick.time).getTime() / 1000) as LightweightCharts.Time,
                 close: lastTick.price,
             });
         }
@@ -168,10 +164,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
             return;
         }
 
-        // FIX: Use Time generic for SeriesMarker
-        const markers: SeriesMarker<Time>[] = signals.map(signal => ({
-            // FIX: Cast to Time instead of UTCTimestamp
-            time: (new Date(signal.time).getTime() / 1000) as Time,
+        const markers: LightweightCharts.SeriesMarker<LightweightCharts.Time>[] = signals.map(signal => ({
+            time: (new Date(signal.time).getTime() / 1000) as LightweightCharts.Time,
             position: signal.direction.includes('BUY') ? 'belowBar' : 'aboveBar',
             color: signal.direction.includes('BUY') ? '#22c55e' : '#ef4444',
             shape: signal.direction.includes('BUY') ? 'arrowUp' : 'arrowDown',

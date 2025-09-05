@@ -112,8 +112,8 @@ export const runBacktest = async (config: {
     tp?: number;
     instrument?: string;
     tradeExitStrategy: 'stop' | 'signal';
-    // New advanced params
     mode?: 'simple' | 'walk-forward';
+    analysisMode?: 'signalsOnly' | 'full';
     stopLossType?: 'percent' | 'atr';
     atrMultiplier?: number;
     walkForwardTrain?: number;

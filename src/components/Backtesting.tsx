@@ -95,6 +95,19 @@ const SignalDetailsPanel: React.FC<{ signal: BacktestSignal }> = ({ signal }) =>
     );
 };
 
+const Toggle: React.FC<{ checked: boolean; onChange: () => void; label: string }> = ({ checked, onChange, label }) => (
+    <div className="flex items-center gap-3">
+        <label htmlFor="signal-toggle" className="text-xs font-medium text-gray-400">{label}</label>
+        <div className="flex items-center cursor-pointer">
+            <div className="relative">
+                <input id="signal-toggle" type="checkbox" className="sr-only" checked={checked} onChange={onChange} />
+                <div className={`block w-10 h-5 rounded-full transition-colors ${checked ? 'bg-cyan-500' : 'bg-zinc-600'}`}></div>
+                <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition-transform ${checked ? 'transform translate-x-5' : ''}`}></div>
+            </div>
+        </div>
+    </div>
+);
+
 const Backtesting: React.FC = () => {
     const { status: brokerStatus } = useBroker();
     const [isLoading, setIsLoading] = useState(false);
@@ -103,6 +116,7 @@ const Backtesting: React.FC = () => {
     const [selectedSignal, setSelectedSignal] = useState<BacktestSignal | null>(null);
     const [activeTab, setActiveTab] = useState<'summary' | 'equity' | 'chart' | 'log' | 'signal'>('summary');
     const [isConfigOpen, setIsConfigOpen] = useState(true);
+    const [isSignalsOnly, setIsSignalsOnly] = useState(false);
     const [config, setConfig] = useState({
         instrument: 'BANKNIFTY',
         period: '1 month',
@@ -136,7 +150,6 @@ const Backtesting: React.FC = () => {
         setSelectedSignal(null);
         setIsLoading(true);
         setResults(null);
-        setActiveTab('summary');
 
         let fromTimestamp = 0;
         let toTimestamp = 0;
@@ -164,6 +177,7 @@ const Backtesting: React.FC = () => {
                 tp: parseFloat(config.tp),
                 tradeExitStrategy: config.tradeExitStrategy,
                 mode: config.mode,
+                analysisMode: isSignalsOnly ? 'signalsOnly' : 'full',
                 stopLossType: config.stopLossType,
                 atrMultiplier: parseFloat(config.atrMultiplier),
                 walkForwardTrain: parseInt(config.walkForwardTrain, 10) * 21, // Approx days
@@ -172,6 +186,11 @@ const Backtesting: React.FC = () => {
             setResults(apiResults);
             sessionStorage.setItem('latestBacktestResults', JSON.stringify(apiResults));
             setChartKey(prev => prev + 1);
+            if (apiResults.analysisMode === 'signalsOnly') {
+                setActiveTab('chart');
+            } else {
+                setActiveTab('summary');
+            }
         } catch (err: any) {
             console.error("Backtest failed:", err);
             setError(err.message || "An unknown error occurred during the backtest.");
@@ -193,6 +212,8 @@ const Backtesting: React.FC = () => {
             {children}
         </button>
     );
+
+    const isSignalsOnlyMode = results?.analysisMode === 'signalsOnly';
 
     return (
         <div className="bg-zinc-900 border border-zinc-700 h-full flex flex-col p-2 gap-2">
@@ -249,46 +270,51 @@ const Backtesting: React.FC = () => {
                                 </div>
                                 {/* Strategy */}
                                 <div className="space-y-3">
-                                    <h4 className="text-xs font-semibold text-cyan-400 border-b border-zinc-800 pb-1">Strategy & Risk</h4>
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs font-medium text-gray-400">Exit Strategy</label>
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => setConfig(p => ({...p, tradeExitStrategy: 'stop'}))} className={`px-2 py-1 text-xs rounded-sm ${config.tradeExitStrategy === 'stop' ? 'bg-cyan-500 text-white' : 'bg-zinc-700 text-gray-300'}`}>SL/TP</button>
-                                            <button onClick={() => setConfig(p => ({...p, tradeExitStrategy: 'signal'}))} className={`px-2 py-1 text-xs rounded-sm ${config.tradeExitStrategy === 'signal' ? 'bg-cyan-500 text-white' : 'bg-zinc-700 text-gray-300'}`}>Signal-to-Signal</button>
-                                        </div>
+                                    <div className="flex justify-between items-center border-b border-zinc-800 pb-1">
+                                        <h4 className="text-xs font-semibold text-cyan-400">Strategy & Risk</h4>
+                                        <Toggle label="Signals Only" checked={isSignalsOnly} onChange={() => setIsSignalsOnly(!isSignalsOnly)} />
                                     </div>
-                                    <div className={`space-y-3 transition-opacity ${config.tradeExitStrategy === 'signal' ? 'opacity-50' : 'opacity-100'}`}>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss Type</label>
-                                            <select value={config.stopLossType} onChange={(e) => setConfig(prev => ({ ...prev, stopLossType: e.target.value as any }))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm disabled:cursor-not-allowed">
-                                                <option value="percent">Percentage (%)</option>
-                                                <option value="atr">ATR Multiplier</option>
-                                            </select>
+                                    <div className={`space-y-3 transition-opacity ${isSignalsOnly ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-medium text-gray-400">Exit Strategy</label>
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={() => setConfig(p => ({...p, tradeExitStrategy: 'stop'}))} className={`px-2 py-1 text-xs rounded-sm ${config.tradeExitStrategy === 'stop' ? 'bg-cyan-500 text-white' : 'bg-zinc-700 text-gray-300'}`}>SL/TP</button>
+                                                <button onClick={() => setConfig(p => ({...p, tradeExitStrategy: 'signal'}))} className={`px-2 py-1 text-xs rounded-sm ${config.tradeExitStrategy === 'signal' ? 'bg-cyan-500 text-white' : 'bg-zinc-700 text-gray-300'}`}>Signal-to-Signal</button>
+                                            </div>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {config.stopLossType === 'percent' ? (
-                                                <>
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss (%)</label>
-                                                        <input type="number" value={config.sl} onChange={e => setConfig(prev => ({...prev, sl: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-400 mb-1">Take Profit (%)</label>
-                                                        <input type="number" value={config.tp} onChange={e => setConfig(prev => ({...prev, tp: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <>
-                                                     <div>
-                                                        <label className="block text-xs font-medium text-gray-400 mb-1">ATR Multiplier (SL)</label>
-                                                        <input type="number" value={config.atrMultiplier} onChange={e => setConfig(prev => ({...prev, atrMultiplier: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
-                                                    </div>
-                                                     <div>
-                                                        <label className="block text-xs font-medium text-gray-400 mb-1">Risk/Reward (TP)</label>
-                                                        <input type="number" value={parseFloat(config.sl) > 0 ? parseFloat(config.tp) / parseFloat(config.sl) : 0} onChange={e => setConfig(prev => ({...prev, tp: (parseFloat(e.target.value) * parseFloat(prev.sl)).toString() }))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
-                                                    </div>
-                                                </>
-                                            )}
+                                        <div className={`space-y-3 transition-opacity ${config.tradeExitStrategy === 'signal' ? 'opacity-50' : 'opacity-100'}`}>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss Type</label>
+                                                <select value={config.stopLossType} onChange={(e) => setConfig(prev => ({ ...prev, stopLossType: e.target.value as any }))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs rounded-sm disabled:cursor-not-allowed">
+                                                    <option value="percent">Percentage (%)</option>
+                                                    <option value="atr">ATR Multiplier</option>
+                                                </select>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {config.stopLossType === 'percent' ? (
+                                                    <>
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-400 mb-1">Stop Loss (%)</label>
+                                                            <input type="number" value={config.sl} onChange={e => setConfig(prev => ({...prev, sl: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-400 mb-1">Take Profit (%)</label>
+                                                            <input type="number" value={config.tp} onChange={e => setConfig(prev => ({...prev, tp: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                         <div>
+                                                            <label className="block text-xs font-medium text-gray-400 mb-1">ATR Multiplier (SL)</label>
+                                                            <input type="number" value={config.atrMultiplier} onChange={e => setConfig(prev => ({...prev, atrMultiplier: e.target.value}))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                        </div>
+                                                         <div>
+                                                            <label className="block text-xs font-medium text-gray-400 mb-1">Risk/Reward (TP)</label>
+                                                            <input type="number" value={parseFloat(config.sl) > 0 ? parseFloat(config.tp) / parseFloat(config.sl) : 0} onChange={e => setConfig(prev => ({...prev, tp: (parseFloat(e.target.value) * parseFloat(prev.sl)).toString() }))} disabled={config.tradeExitStrategy === 'signal'} className="w-full bg-zinc-800 border border-zinc-700 p-1 text-white text-xs rounded-sm disabled:cursor-not-allowed" step="0.1" />
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -335,19 +361,19 @@ const Backtesting: React.FC = () => {
                         <div className="flex-grow flex flex-col gap-2 overflow-hidden">
                              {/* Top Level Metrics */}
                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center flex-shrink-0">
-                                <ResultsMetric label="Net Profit (Points)" value={results.netProfit.toFixed(2)} color={results.netProfit > 0 ? 'text-green-400' : 'text-red-400'} size="large" />
-                                <ResultsMetric label="Win Rate" value={results.winRate} color="text-cyan-400" size="large" />
-                                <ResultsMetric label="Total Trades" value={results.totalTrades} size="large" />
-                                <ResultsMetric label="Max Drawdown" value={results.maxDrawdown} color="text-red-400" size="large" />
+                                <ResultsMetric label="Net Profit (Points)" value={isSignalsOnlyMode ? 'N/A' : results.netProfit.toFixed(2)} color={!isSignalsOnlyMode && results.netProfit > 0 ? 'text-green-400' : 'text-red-400'} size="large" />
+                                <ResultsMetric label="Win Rate" value={isSignalsOnlyMode ? 'N/A' : results.winRate} color="text-cyan-400" size="large" />
+                                <ResultsMetric label={isSignalsOnlyMode ? "Total Signals" : "Total Trades"} value={results.totalTrades} size="large" />
+                                <ResultsMetric label="Max Drawdown" value={isSignalsOnlyMode ? 'N/A' : results.maxDrawdown} color="text-red-400" size="large" />
                             </div>
                             
                             {/* Tab Navigation */}
                              <div className="border-b border-zinc-800 flex-shrink-0">
                                 <nav className="-mb-px flex gap-4" aria-label="Tabs">
                                     <TabButton tabId="summary" currentTab={activeTab}>Summary</TabButton>
-                                    <TabButton tabId="equity" currentTab={activeTab}>Equity Curve</TabButton>
+                                    <TabButton tabId="equity" currentTab={activeTab} disabled={isSignalsOnlyMode}>Equity Curve</TabButton>
                                     <TabButton tabId="chart" currentTab={activeTab}>Price Chart</TabButton>
-                                    <TabButton tabId="log" currentTab={activeTab}>Trade Log</TabButton>
+                                    <TabButton tabId="log" currentTab={activeTab} disabled={isSignalsOnlyMode}>Trade Log</TabButton>
                                     {selectedSignal && 
                                         <TabButton tabId="signal" currentTab={activeTab}>
                                             <i className="fa-solid fa-circle-info mr-2 text-cyan-400"></i>Signal Details
@@ -361,10 +387,10 @@ const Backtesting: React.FC = () => {
                                 {activeTab === 'summary' && (
                                     <div className="p-2 h-full overflow-y-auto">
                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center mb-4">
-                                            <ResultsMetric label="Profit Factor" value={results.profitFactor} />
-                                            <ResultsMetric label="Avg Win / Loss" value={`${results.avgWin.toFixed(1)} / ${results.avgLoss.toFixed(1)}`} />
-                                            <ResultsMetric label="Total Wins" value={results.totalWins} color="text-green-400" />
-                                            <ResultsMetric label="Total Losses" value={results.totalLosses} color="text-red-400" />
+                                            <ResultsMetric label="Profit Factor" value={isSignalsOnlyMode ? 'N/A' : results.profitFactor} />
+                                            <ResultsMetric label="Avg Win / Loss" value={isSignalsOnlyMode ? 'N/A' : `${results.avgWin.toFixed(1)} / ${results.avgLoss.toFixed(1)}`} />
+                                            <ResultsMetric label="Total Wins" value={isSignalsOnlyMode ? 'N/A' : results.totalWins} color="text-green-400" />
+                                            <ResultsMetric label="Total Losses" value={isSignalsOnlyMode ? 'N/A' : results.totalLosses} color="text-red-400" />
                                         </div>
                                         {results.mode === 'walk-forward' && results.walkForwardPeriods && (
                                             <div>

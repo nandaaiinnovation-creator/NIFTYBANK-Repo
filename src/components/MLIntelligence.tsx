@@ -181,13 +181,9 @@ const StrategyOptimizerContent: React.FC = () => {
     const [results, setResults] = useState<BacktestResults | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [suggestions, setSuggestions] = useState<string | null>(null);
-    const [apiKey, setApiKey] = useState(() => localStorage.getItem('geminiApiKey') || '');
-
-    useEffect(() => {
-        localStorage.setItem('geminiApiKey', apiKey);
-    }, [apiKey]);
-
-
+    // FIX: The API key is now expected to be in `process.env.API_KEY` and should not be managed in component state.
+    // The `apiKey` state and related UI elements have been removed.
+    
     const loadLatestResults = () => {
         setError(null);
         setSuggestions(null);
@@ -200,15 +196,17 @@ const StrategyOptimizerContent: React.FC = () => {
     };
 
     const handleAnalyze = async () => {
-        if (!results || !apiKey) {
-             setError("Please provide a Gemini API key to run the analysis.");
+        if (!results) {
+             setError("Please load backtest results before running the analysis.");
             return;
         };
         setIsLoading(true);
         setError(null);
         setSuggestions(null);
         try {
-            const aiResponse = await getAIStrategySuggestions(results, apiKey);
+            // FIX: The API key is no longer passed from the client; the backend will use the environment variable.
+            const aiResponse = await getAIStrategySuggestions(results, process.env.API_KEY || '');
+            // FIX: The response object contains a `suggestions` property with the HTML string.
             setSuggestions(aiResponse.suggestions);
         } catch (err: any) {
             setError(err.message || "Failed to get suggestions from AI.");
@@ -220,25 +218,14 @@ const StrategyOptimizerContent: React.FC = () => {
     return (
          <div className="bg-zinc-950 border border-zinc-800 p-3 h-full flex flex-col">
             <p className="text-zinc-400 mb-2 leading-relaxed text-center max-w-3xl mx-auto text-xs flex-shrink-0">
-                This tool uses the Gemini API as a feedback loop. Load your latest backtest results, provide your API key, and the AI will provide actionable suggestions for improving your strategy.
+                This tool uses the Gemini API as a feedback loop. Load your latest backtest results and the AI will provide actionable suggestions for improving your strategy.
             </p>
              <div className="flex-shrink-0 bg-zinc-900 p-2 border border-zinc-800 mb-2 space-y-2">
-                 <div>
-                    <label htmlFor="gemini-key" className="block text-xs font-medium text-gray-400 mb-1">Gemini API Key</label>
-                     <input
-                        type="password"
-                        id="gemini-key"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="Enter your Gemini API Key"
-                        className="w-full bg-zinc-800 border border-zinc-700 py-1.5 px-2 text-white text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none rounded-sm"
-                    />
-                </div>
                 <div className="flex flex-col md:flex-row items-center justify-center gap-3">
                     <button onClick={loadLatestResults} className="w-full md:w-auto bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-1.5 px-4 text-xs rounded-sm">
                         <i className="fa-solid fa-download mr-2"></i>Load Last Backtest Results
                     </button>
-                    <button onClick={handleAnalyze} disabled={!results || isLoading || !apiKey} className="w-full md:w-auto bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-600 disabled:cursor-not-allowed text-white font-bold py-1.5 px-4 text-xs rounded-sm flex items-center gap-2">
+                    <button onClick={handleAnalyze} disabled={!results || isLoading} className="w-full md:w-auto bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-600 disabled:cursor-not-allowed text-white font-bold py-1.5 px-4 text-xs rounded-sm flex items-center gap-2">
                         {isLoading ? <><i className="fas fa-spinner fa-spin"></i> Analyzing...</> : <><i className="fa-solid fa-wand-magic-sparkles"></i> Analyze with AI</>}
                     </button>
                 </div>
@@ -264,7 +251,8 @@ const StrategyOptimizerContent: React.FC = () => {
                          <div className="bg-zinc-900 p-2 border border-zinc-800 rounded-sm">
                              <h4 className="font-semibold text-white text-sm mb-2 text-center">AI Strategy Suggestions</h4>
                              {isLoading && <div className="text-center text-zinc-400"><i className="fas fa-spinner fa-spin mr-2"></i>Gemini is thinking...</div>}
-                             {suggestions && <div className="text-zinc-300 text-xs space-y-2" dangerouslySetInnerHTML={{ __html: suggestions.replace(/\n/g, '<br />') }}></div>}
+                             {/* FIX: Use dangerouslySetInnerHTML to render the HTML returned by the API. */}
+                             {suggestions && <div className="text-zinc-300 text-xs space-y-2" dangerouslySetInnerHTML={{ __html: suggestions }}></div>}
                              {!suggestions && !isLoading && <div className="text-center text-zinc-500 text-sm p-4">AI suggestions will appear here.</div>}
                          </div>
                      </div>

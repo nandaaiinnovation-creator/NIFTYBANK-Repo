@@ -609,7 +609,7 @@ class PriceActionEngine {
   // ------------------------------------
   
   async runHistoricalAnalysis(config) {
-    const { instrument = 'BANKNIFTY' } = config;
+    const { instrument = 'BANKNIFTY', analysisMode = 'full' } = config;
     const instrumentToken = INSTRUMENT_MAP[instrument] || INSTRUMENT_MAP['BANKNIFTY'];
     const { candles } = await this._getHistoricalDataWithCache(config, instrumentToken);
     
@@ -619,9 +619,26 @@ class PriceActionEngine {
     }
 
     const signals = this._generateSignalsFromHistory(candles, config.timeframe);
+    
+    if (analysisMode === 'signalsOnly') {
+        console.log("Running in signals-only mode. Bypassing trade simulation.");
+        return { 
+            ...config, 
+            signals, 
+            ...defaultMetrics,
+            totalTrades: signals.length, // Re-purpose this field for total signal count
+            winRate: 'N/A',
+            profitFactor: 'N/A',
+            maxDrawdown: 'N/A',
+            netProfit: 0,
+            candles: candles.map(c => ({...c, date: c.date.toISOString()})),
+            analysisMode: 'signalsOnly'
+        };
+    }
+
     const metrics = this._calculatePerformanceMetrics(signals, candles, config);
     
-    return { ...config, signals, ...metrics, candles: candles.map(c => ({...c, date: c.date.toISOString()})) };
+    return { ...config, signals, ...metrics, candles: candles.map(c => ({...c, date: c.date.toISOString()})), analysisMode: 'full' };
   }
 
   async runWalkForwardAnalysis(config) {
@@ -752,10 +769,13 @@ class PriceActionEngine {
   
   async getAIStrategySuggestions(results, apiKey) { 
       if (!apiKey) throw new Error("A Gemini API Key is required.");
-      const ai = new GoogleGenAI({apiKey});
-      const prompt = `Analyze backtest results: Win Rate ${results.winRate}, Profit ${results.netProfit}. Provide HTML bullet points for improvement.`;
+      // FIX: The API key must be passed as a named parameter to the GoogleGenAI constructor.
+      const ai = new GoogleGenAI({apiKey: apiKey});
+      const prompt = `Analyze these backtest results: Win Rate is ${results.winRate}, Net Profit is ${results.netProfit}, Total Trades is ${results.totalTrades}. Provide a concise list of 2-3 actionable suggestions for strategy improvement, formatted as simple HTML bullet points. Focus on adjusting rules, risk management, or timeframes.`;
+      // FIX: Use the 'gemini-2.5-flash' model as recommended.
       const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-      return `<ul><li>${response.text.replace(/\n/g, "</li><li>")}</li></ul>`;
+      // FIX: Correctly extract the text from the response using the .text property.
+      return response.text;
   }
   
   // ------------------------------------

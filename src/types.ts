@@ -105,9 +105,9 @@ export interface BacktestResults extends PerformanceMetrics {
     signals: BacktestSignal[];
     dataSourceMessage?: string;
     trades?: BacktestTrade[];
-    // New optional fields for Walk-Forward mode
     mode?: 'simple' | 'walk-forward';
     walkForwardPeriods?: WalkForwardPeriodResult[];
+    analysisMode?: 'signalsOnly' | 'full';
 }
 
 export interface SignalPerformance {
