@@ -933,7 +933,16 @@ class PriceActionEngine {
         );
         if (dbRes.rows.length > 50) {
             console.log(`Cache hit: Found ${dbRes.rows.length} candles in DB.`);
-            return { candles: dbRes.rows.map(r => ({ ...r, date: new Date(r.timestamp) })), dataSourceMessage: "Using cache." };
+            const parsedCandles = dbRes.rows.map(r => ({
+                ...r,
+                open: parseFloat(r.open),
+                high: parseFloat(r.high),
+                low: parseFloat(r.low),
+                close: parseFloat(r.close),
+                volume: r.volume ? parseInt(r.volume, 10) : 0,
+                date: new Date(r.timestamp),
+            }));
+            return { candles: parsedCandles, dataSourceMessage: "Using cache." };
         }
     } catch (e) { console.warn("DB cache check failed:", e.message); }
     

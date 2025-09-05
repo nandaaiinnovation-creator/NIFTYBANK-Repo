@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, memo, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi, UTCTimestamp, LineStyle, CandlestickData, SeriesMarker } from 'lightweight-charts';
+// FIX: Swapped UTCTimestamp for Time to resolve type conflicts with older lightweight-charts versions.
+// FIX: Use the specific ICandlestickSeriesApi interface to ensure methods like addCandlestickSeries and setMarkers are available.
+import { createChart, IChartApi, ICandlestickSeriesApi, Time, LineStyle, CandlestickData, SeriesMarker } from 'lightweight-charts';
 import { useBroker } from '../contexts/BrokerContext';
 import { runBacktest } from '../services/api';
 import type { Signal, BacktestCandle, BacktestSignal } from '../types';
@@ -15,7 +17,8 @@ interface TradingViewChartProps {
 const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData, signals = [], onSignalClick }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
-    const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+    // FIX: Use the more specific ICandlestickSeriesApi type for better type inference and method availability.
+    const seriesRef = useRef<ICandlestickSeriesApi | null>(null);
     const [isLoading, setIsLoading] = useState(isLive);
 
     const { lastTick } = useBroker();
@@ -65,12 +68,12 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
             chart.subscribeClick(param => {
                 if (!param.time || !param.point || !signals || signals.length === 0) return;
 
-                const clickedTime = param.time as UTCTimestamp;
+                const clickedTime = param.time as number; // Treat as numeric timestamp
                 let closestSignal: BacktestSignal | null = null;
                 let minTimeDiff = Infinity;
 
                 (signals as BacktestSignal[]).forEach(signal => {
-                    const signalTime = new Date(signal.time).getTime() / 1000 as UTCTimestamp;
+                    const signalTime = new Date(signal.time).getTime() / 1000; // This is already a number
                     const timeDiff = Math.abs(clickedTime - signalTime);
                     
                     if (timeDiff <= 300 && timeDiff < minTimeDiff) { // 5 min tolerance
@@ -100,7 +103,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
 
         const formatCandles = (candles: BacktestCandle[]): CandlestickData[] => {
             return candles.map(c => ({
-                time: (new Date(c.date).getTime() / 1000) as UTCTimestamp,
+                // FIX: Cast to Time instead of UTCTimestamp
+                time: (new Date(c.date).getTime() / 1000) as Time,
                 open: c.open,
                 high: c.high,
                 low: c.low,
@@ -147,7 +151,8 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
     useEffect(() => {
         if (isLive && lastTick && seriesRef.current) {
             seriesRef.current.update({
-                time: (new Date(lastTick.time).getTime() / 1000) as UTCTimestamp,
+                // FIX: Cast to Time instead of UTCTimestamp
+                time: (new Date(lastTick.time).getTime() / 1000) as Time,
                 close: lastTick.price,
             });
         }
@@ -163,8 +168,10 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({ isLive, initialData
             return;
         }
 
-        const markers: SeriesMarker<UTCTimestamp>[] = signals.map(signal => ({
-            time: (new Date(signal.time).getTime() / 1000) as UTCTimestamp,
+        // FIX: Use Time generic for SeriesMarker
+        const markers: SeriesMarker<Time>[] = signals.map(signal => ({
+            // FIX: Cast to Time instead of UTCTimestamp
+            time: (new Date(signal.time).getTime() / 1000) as Time,
             position: signal.direction.includes('BUY') ? 'belowBar' : 'aboveBar',
             color: signal.direction.includes('BUY') ? '#22c55e' : '#ef4444',
             shape: signal.direction.includes('BUY') ? 'arrowUp' : 'arrowDown',
